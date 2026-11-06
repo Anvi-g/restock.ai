@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { SupplierQuote, InventoryItem } from '../types';
 import { createPayPalOrder, capturePayPalOrder } from '../services/api';
-import { CheckCircle2, ShieldCheck, Loader2, DollarSign, X, ArrowRight } from 'lucide-react';
+import { CheckCircle2, ShieldCheck, Loader2, DollarSign, X, ArrowRight, Download } from 'lucide-react';
 
 interface Props {
   item: InventoryItem;
@@ -22,6 +22,7 @@ export const PayPalModal: React.FC<Props> = ({
   const [orderId, setOrderId] = useState<string>('');
   const [txnId, setTxnId] = useState<string>('');
   const [isSimulated, setIsSimulated] = useState<boolean>(false);
+  const [capturedStock, setCapturedStock] = useState<number | null>(null);
 
   const handleCreateOrder = async () => {
     setStep('CREATING');
@@ -42,6 +43,7 @@ export const PayPalModal: React.FC<Props> = ({
     }
   };
 
+
   const handleCapture = async () => {
     setStep('CAPTURING');
     try {
@@ -51,11 +53,49 @@ export const PayPalModal: React.FC<Props> = ({
       });
 
       setTxnId(res.data.transaction_id);
-      setStep('SUCCESS');
-      onSuccess(res.data.new_stock, res.data.transaction_id);
+      setCapturedStock(res.data.new_stock);
+      setStep('SUCCESS'); // Keeps the modal on the success screen!
     } catch (err) {
       console.error('Failed to capture PayPal payment:', err);
       setStep('READY');
+    }
+  };
+
+  const handleClose = () => {
+    if (step === 'SUCCESS' && capturedStock !== null) {
+      onSuccess(capturedStock, txnId);
+    }
+    onClose();
+  };
+
+    const handleDownloadReceipt = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/receipt/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          supplier_name: quote.supplier_name,
+          item_name: item.name,
+          quantity: quantity,
+          unit: item.unit,
+          unit_price: quote.unit_price,
+          shipping_fee: quote.shipping_fee,
+          total_cost: quote.total_cost,
+          order_id: orderId,
+          transaction_id: txnId,
+        }),
+      });
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Restock_Receipt_${txnId.slice(0, 8)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (err) {
+      console.error('Failed to download receipt:', err);
     }
   };
 
@@ -172,12 +212,21 @@ export const PayPalModal: React.FC<Props> = ({
                 </p>
               </div>
 
-              <button
-                onClick={onClose}
-                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
-              >
-                Close & View Updated Dashboard
-              </button>
+              <div className="flex flex-col gap-2 pt-2">
+                                <button
+                  onClick={handleDownloadReceipt}
+                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                >
+                  <Download className="w-4 h-4" /> Download PDF Receipt (ReportLab)
+                </button>
+
+                <button
+                  onClick={handleClose}
+                  className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Close & View Updated Dashboard
+                </button>
+              </div>
             </div>
           )}
         </div>

@@ -1,12 +1,26 @@
 import { useState, useEffect } from 'react';
 import type { InventoryItem, SupplierQuote, SourcingResult } from './types';
-import { getInventory, simulateLowInventory, resetInventory, runAgentSourcing, getBudgetCap, updateBudgetCap  } from './services/api';
+import { 
+  getInventory, 
+  simulateLowInventory, 
+  resetInventory, 
+  runAgentSourcing, 
+  getBudgetCap, 
+  updateBudgetCap,
+  switchProfile
+} from './services/api';
 import { SourcingGrid } from './components/SourcingGrid';
 import { BudgetCapControl } from './components/BudgetCapControl';
 import { ApprovalCard } from './components/ApprovalCard';
 import { AgentTerminal } from './components/AgentTerminal';
 import { PayPalModal } from './components/PayPalModal';
-import { Bot, RefreshCw, AlertTriangle, CheckCircle, PackageSearch } from 'lucide-react';
+import { Bot, RefreshCw, AlertTriangle, CheckCircle, PackageSearch, ChevronDown } from 'lucide-react';
+
+const PROFILES = [
+  { key: 'coffee', name: 'Bean & Brew Roastery', type: 'Specialty Coffee Shop', icon: '☕', email: 'buyer-sandbox@restock.ai' },
+  { key: 'tech', name: 'Apex Drone & Tech Labs', type: 'Electronics Repair', icon: '🚁', email: 'tech-buyer@restock.ai' },
+  { key: 'retail', name: 'EcoBox Packaging Co', type: 'E-commerce Logistics', icon: '📦', email: 'shipping-buyer@restock.ai' },
+];
 
 export default function App() {
   const [inventory, setInventory] = useState<InventoryItem | null>(null);
@@ -15,6 +29,8 @@ export default function App() {
   const [budgetCap, setBudgetCap] = useState<number>(75);
   const [loadingAgent, setLoadingAgent] = useState(false);
   const [showPayPalModal, setShowPayPalModal] = useState(false);
+  const [currentProfile, setCurrentProfile] = useState(PROFILES[0]);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   // Load inventory on mount
   useEffect(() => {
@@ -78,6 +94,19 @@ export default function App() {
     setShowPayPalModal(true);
   };
 
+  const handleSwitchProfile = async (profile: typeof PROFILES[0]) => {
+    try {
+      const res = await switchProfile(profile.key);
+      setCurrentProfile(profile);
+      setInventory(res.data.inventory);
+      setSourcing(null);
+      setSelectedQuote(null);
+      setShowProfileMenu(false);
+    } catch (err) {
+      console.error("Failed to switch profile:", err);
+    }
+  };
+
   const isLowStock = inventory && inventory.current_stock <= inventory.min_threshold;
 
   return (
@@ -116,13 +145,45 @@ export default function App() {
 
           <div className="h-6 w-px bg-slate-200 hidden sm:block" />
 
-          {/* Buyer Profile at Top Right */}
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <div className="text-left text-xs">
-              <span className="font-bold text-slate-800 block text-[11px] leading-tight">Bean & Brew Roastery</span>
-              <span className="text-[10px] text-slate-400 font-mono">buyer-sandbox@restock.ai</span>
-            </div>
+          {/* Interactive Buyer Profile Switcher */}
+          <div className="relative">
+            <button
+              onClick={() => setShowProfileMenu(!showProfileMenu)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors cursor-pointer text-left shadow-2xs"
+            >
+              <span className="text-base leading-none">{currentProfile.icon}</span>
+              <div className="text-left text-xs">
+                <div className="flex items-center gap-1">
+                  <span className="font-bold text-slate-800 text-[11px] leading-tight">{currentProfile.name}</span>
+                  <ChevronDown className="w-3 h-3 text-slate-400" />
+                </div>
+                <span className="text-[10px] text-slate-400 font-mono block leading-none">{currentProfile.type}</span>
+              </div>
+            </button>
+
+            {/* Dropdown Menu */}
+            {showProfileMenu && (
+              <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
+                <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Select Business Environment
+                </div>
+                {PROFILES.map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => handleSwitchProfile(p)}
+                    className={`w-full px-3 py-2 text-left flex items-center gap-2.5 hover:bg-slate-50 transition-colors cursor-pointer ${
+                      currentProfile.key === p.key ? 'bg-blue-50/70 text-blue-900 font-semibold' : 'text-slate-700'
+                    }`}
+                  >
+                    <span className="text-lg">{p.icon}</span>
+                    <div className="text-xs">
+                      <div className="font-bold text-slate-900 leading-tight">{p.name}</div>
+                      <div className="text-[10px] text-slate-500">{p.type}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </header>

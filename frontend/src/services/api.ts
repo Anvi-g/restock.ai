@@ -12,6 +12,10 @@ export const getBudgetCap = () => API.get<{ budget_cap: number }>('/budget-cap')
 export const updateBudgetCap = (budget_cap: number) => API.post<{ budget_cap: number }>('/budget-cap', { budget_cap });
 export const runAgentSourcing = () => API.post<SourcingResult>('/agent/source');
 
+export const getBusiness = () => API.get('/business');
+export const getProfiles = () => API.get('/profiles');
+export const switchProfile = (profile_key: string) => API.post('/business/switch', { profile_key });
+
 export const createPayPalOrder = (data: {
   amount: number;
   supplier_name: string;
