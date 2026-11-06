@@ -5,6 +5,7 @@ import { SourcingGrid } from './components/SourcingGrid';
 import { BudgetCapControl } from './components/BudgetCapControl';
 import { ApprovalCard } from './components/ApprovalCard';
 import { AgentTerminal } from './components/AgentTerminal';
+import { PayPalModal } from './components/PayPalModal';
 import { Bot, RefreshCw, AlertTriangle, CheckCircle, PackageSearch } from 'lucide-react';
 
 export default function App() {
@@ -13,6 +14,7 @@ export default function App() {
   const [selectedQuote, setSelectedQuote] = useState<SupplierQuote | null>(null);
   const [budgetCap, setBudgetCap] = useState<number>(75);
   const [loadingAgent, setLoadingAgent] = useState(false);
+  const [showPayPalModal, setShowPayPalModal] = useState(false);
 
   // Load inventory on mount
   useEffect(() => {
@@ -73,7 +75,7 @@ export default function App() {
   };
 
   const handleApproveAndPay = () => {
-    alert(`Triggering PayPal checkout for $${selectedQuote?.total_cost.toFixed(2)} to ${selectedQuote?.supplier_name}!`);
+    setShowPayPalModal(true);
   };
 
   const isLowStock = inventory && inventory.current_stock <= inventory.min_threshold;
@@ -210,6 +212,22 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* PayPal Orders API Checkout Modal */}
+      {showPayPalModal && inventory && selectedQuote && sourcing && (
+        <PayPalModal
+          item={inventory}
+          quantity={sourcing.quantity_needed}
+          quote={selectedQuote}
+          onClose={() => setShowPayPalModal(false)}
+          onSuccess={(newStock) => {
+            setInventory((prev) => (prev ? { ...prev, current_stock: newStock } : prev));
+            setSourcing(null);
+            setSelectedQuote(null);
+            setShowPayPalModal(false);
+          }}
+        />
+      )}
     </div>
   );
 }
