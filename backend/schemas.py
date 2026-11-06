@@ -17,9 +17,10 @@ class SupplierQuote(BaseModel):
     shipping_fee: float
     total_cost: float
     lead_time_days: int
-    rating: float               # e.g., 4.8 out of 5
+    rating: float               
     is_recommended: bool = False
     ai_rationale: Optional[str] = None
+    savings_vs_avg: Optional[float] = None 
 
 class SourcingResult(BaseModel):
     item: InventoryItem
@@ -28,4 +29,12 @@ class SourcingResult(BaseModel):
     recommended_supplier_id: str
     requires_approval: bool
     budget_cap: float
-    status: str                 # "AUTO_APPROVED", "AWAITING_APPROVAL", "OPTIMAL"
+    status: str # "AUTO_APPROVED", "AWAITING_APPROVAL", "OPTIMAL"
+    agent_logs: List[str]                    
+    market_average_cost: float
+
+class BusinessProfile(BaseModel):
+    business_name: str = "Bean & Brew Roastery"
+    business_type: str = "Specialty Coffee Shop"
+    owner_email: str = "buyer-sandbox@restock.ai"
+    currency: str = "USD"

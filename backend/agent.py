@@ -1,39 +1,122 @@
+import os
+import json
+import httpx
 from typing import List
-from schemas import InventoryItem, SupplierQuote, SourcingResult
+from dotenv import load_dotenv
+from schemas import InventoryItem, SupplierQuote, SourcingResult, BusinessProfile
 from suppliers import fetch_supplier_quotes
 
-def run_researcher_agent(item: InventoryItem, budget_cap: float = 75.0) -> SourcingResult:
+load_dotenv()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+
+async def get_gemini_rationale(
+    item: InventoryItem, 
+    business: BusinessProfile,
+    quotes: List[dict], 
+    quantity: int
+) -> dict:
+    """Calls Gemini 2.5 Flash to generate executive procurement reasoning."""
+    if not GEMINI_API_KEY or "DummyKey" in GEMINI_API_KEY or "your_gemini" in GEMINI_API_KEY:
+        return {}
+
+    # Dynamic prompt using registered business profile
+    prompt = f"""You are an autonomous B2B procurement agent for '{business.business_name}' ({business.business_type}).
+Critical supply deficit detected: {item.name}.
+Current stock: {item.current_stock} {item.unit}. Minimum safety threshold: {item.min_threshold}. Deficit to order: {quantity} {item.unit}.
+
+Supplier Quotes Available:
+{json.dumps(quotes, indent=2)}
+
+Select the best supplier balancing stockout prevention (lead time) with total cost and supplier rating.
+Return ONLY valid JSON matching this exact structure:
+{{
+  "recommended_supplier_id": "<supplier_id>",
+  "ai_rationale": "<2 sentences explaining why this option prevents downtime and optimizes spend for {business.business_name}>"
+}}"""
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"response_mime_type": "application/json"}
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            resp = await client.post(url, json=payload)
+            if resp.status_code == 200:
+                data = resp.json()
+                text = data["candidates"][0]["content"]["parts"][0]["text"]
+                return json.loads(text)
+    except Exception as e:
+        print(f"[Gemini API fallback triggered]: {e}")
+    return {}
+
+async def run_researcher_agent(
+    item: InventoryItem, 
+    business: BusinessProfile,
+    budget_cap: float = 75.0
+) -> SourcingResult:
+    logs: List[str] = []
     quantity_needed = max(0, item.optimal_stock - item.current_stock)
-    raw_quotes = fetch_supplier_quotes(item.name, quantity_needed)
     
+    logs.append(f"[AGENT] 🏢 Active Business: {business.business_name} ({business.business_type})")
+    logs.append(f"[AGENT] 🔍 Sourcing Trigger: Deficit of {quantity_needed} {item.unit} detected for '{item.name}'.")
+    logs.append(f"[AGENT] 🌐 Querying 4 supplier catalogs across network via MCP protocol...")
+
+    raw_quotes = fetch_supplier_quotes(item.name, quantity_needed)
+    avg_cost = sum(q["total_cost"] for q in raw_quotes) / len(raw_quotes)
+
+    # Calculate baseline heuristic scores
     min_cost = min(q["total_cost"] for q in raw_quotes)
     scored_quotes: List[SupplierQuote] = []
-    best_quote = None
+    heuristic_best: SupplierQuote = None
     highest_score = -1.0
-    
+
     for q in raw_quotes:
         # 50% Price efficiency, 30% Delivery Speed, 20% Supplier Reliability
         price_score = min_cost / q["total_cost"]
         speed_score = max(0.1, (8 - q["lead_time_days"]) / 7.0)
         rating_score = q["rating"] / 5.0
         composite_score = (0.50 * price_score) + (0.30 * speed_score) + (0.20 * rating_score)
+
+        savings = round(avg_cost - q["total_cost"], 2)
+        quote_obj = SupplierQuote(**q, savings_vs_avg=savings)
         
-        quote_obj = SupplierQuote(**q)
         if composite_score > highest_score:
             highest_score = composite_score
-            best_quote = quote_obj
+            heuristic_best = quote_obj
         scored_quotes.append(quote_obj)
+
+    # Attempt Gemini LLM Reasoning
+    logs.append(f"[AGENT] 🧠 Invoking Gemini 2.5 Flash for autonomous trade-off analysis...")
+    gemini_decision = await get_gemini_rationale(item, business, raw_quotes, quantity_needed)
+
+    recommended_id = gemini_decision.get("recommended_supplier_id") or (heuristic_best.supplier_id if heuristic_best else "")
+    rationale = gemini_decision.get("ai_rationale")
+
+    # Match recommendation
+    best_quote = next((q for q in scored_quotes if q.supplier_id == recommended_id), heuristic_best)
 
     if best_quote:
         best_quote.is_recommended = True
-        best_quote.ai_rationale = (
+        best_quote.ai_rationale = rationale or (
             f"Top pick: Optimal balance of cost (${best_quote.total_cost:.2f}) "
             f"and speed ({best_quote.lead_time_days}d delivery, {best_quote.rating}★ rating)."
         )
+        logs.append(f"[AGENT] 🎯 Recommendation: '{best_quote.supplier_name}' chosen (Total: ${best_quote.total_cost:.2f}, ETA: {best_quote.lead_time_days}d).")
+    else:
+        logs.append("[AGENT] ⚠️ No valid supplier found for this item.")
 
+    # Guardrails
     total_cost = best_quote.total_cost if best_quote else 0.0
     requires_approval = total_cost > budget_cap
-    status = "AWAITING_APPROVAL" if requires_approval else "AUTO_APPROVED"
+
+    if requires_approval:
+        logs.append(f"[AGENT] 🛡️ Guardrail Check: Order total (${total_cost:.2f}) EXCEEDS budget cap (${budget_cap:.2f}). Pausing for Human-in-the-Loop authorization.")
+        status = "AWAITING_APPROVAL"
+    else:
+        logs.append(f"[AGENT] ⚡ Guardrail Check: Order total (${total_cost:.2f}) is WITHIN budget cap (${budget_cap:.2f}). Pre-authorized for autonomous PayPal capture.")
+        status = "AUTO_APPROVED"
 
     return SourcingResult(
         item=item,
@@ -43,4 +126,6 @@ def run_researcher_agent(item: InventoryItem, budget_cap: float = 75.0) -> Sourc
         requires_approval=requires_approval,
         budget_cap=budget_cap,
         status=status,
+        agent_logs=logs,
+        market_average_cost=round(avg_cost, 2),
     )
