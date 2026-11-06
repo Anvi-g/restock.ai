@@ -75,6 +75,8 @@ async def trigger_agent_sourcing():
         budget_cap=CURRENT_BUDGET_CAP
     )
 
+from typing import Optional
+
 class CreateOrderRequest(BaseModel):
     amount: float
     supplier_name: str
@@ -82,8 +84,8 @@ class CreateOrderRequest(BaseModel):
     quantity: int
 
 class CaptureOrderRequest(BaseModel):
-    order_id: str
-    quantity: int
+    order_id: Optional[str] = None
+    quantity: int = 26
 
 @app.post("/api/paypal/create-order")
 async def api_create_paypal_order(body: CreateOrderRequest):
