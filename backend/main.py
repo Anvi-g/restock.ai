@@ -1,7 +1,9 @@
+import uuid
+from typing import Optional, List
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from schemas import InventoryItem, SourcingResult, BusinessProfile
+from schemas import InventoryItem, SourcingResult, BusinessProfile, BulkOpportunity
 from agent import run_researcher_agent
 from paypal import create_order, capture_order
 from fastapi.responses import StreamingResponse
@@ -17,7 +19,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Multi-Tenant Business Profiles for Hackathon Demo
+# Multi-Tenant Business Profiles & Multi-Item Catalogs
 PROFILES = {
     "coffee": {
         "business": BusinessProfile(
@@ -26,15 +28,52 @@ PROFILES = {
             owner_email="buyer-sandbox@restock.ai",
             currency="USD"
         ),
-        "inventory": InventoryItem(
-            id="inv_coffee_01",
-            name="Organic Colombian Espresso Beans (1kg)",
-            category="Perishables / Coffee",
-            current_stock=24,
-            min_threshold=10,
-            optimal_stock=30,
-            unit="bags"
-        )
+        "inventory": [
+            InventoryItem(
+                id="inv_coffee_01",
+                name="Organic Colombian Espresso Beans (1kg)",
+                category="Perishables / Coffee",
+                current_stock=4,
+                min_threshold=10,
+                optimal_stock=30,
+                unit="bags",
+                bulk_threshold_qty=40,
+                bulk_discount_rate=0.25
+            ),
+            InventoryItem(
+                id="inv_milk_02",
+                name="Oat Milk Barista Edition (1L)",
+                category="Perishables / Dairy Alternative",
+                current_stock=18,
+                min_threshold=20,
+                optimal_stock=60,
+                unit="cartons",
+                bulk_threshold_qty=80,
+                bulk_discount_rate=0.20
+            ),
+            InventoryItem(
+                id="inv_cups_03",
+                name="Eco-Friendly Compostable 12oz Cups",
+                category="Packaging / Supplies",
+                current_stock=120,
+                min_threshold=200,
+                optimal_stock=500,
+                unit="cups",
+                bulk_threshold_qty=1000,
+                bulk_discount_rate=0.30
+            ),
+            InventoryItem(
+                id="inv_syrup_04",
+                name="Artisan Madagascar Vanilla Syrup (750ml)",
+                category="Perishables / Flavoring",
+                current_stock=14,
+                min_threshold=6,
+                optimal_stock=18,
+                unit="bottles",
+                bulk_threshold_qty=30,
+                bulk_discount_rate=0.15
+            )
+        ]
     },
     "tech": {
         "business": BusinessProfile(
@@ -43,15 +82,30 @@ PROFILES = {
             owner_email="tech-buyer@restock.ai",
             currency="USD"
         ),
-        "inventory": InventoryItem(
-            id="inv_tech_02",
-            name="LiPo Battery Packs 4S 1500mAh",
-            category="Hardware / Batteries",
-            current_stock=40,
-            min_threshold=15,
-            optimal_stock=50,
-            unit="units"
-        )
+        "inventory": [
+            InventoryItem(
+                id="inv_tech_01",
+                name="LiPo Battery Packs 4S 1500mAh",
+                category="Hardware / Batteries",
+                current_stock=6,
+                min_threshold=15,
+                optimal_stock=50,
+                unit="units",
+                bulk_threshold_qty=60,
+                bulk_discount_rate=0.22
+            ),
+            InventoryItem(
+                id="inv_tech_02",
+                name="Carbon Fiber 5-Inch Propeller Sets",
+                category="Hardware / Propulsion",
+                current_stock=25,
+                min_threshold=30,
+                optimal_stock=100,
+                unit="sets",
+                bulk_threshold_qty=150,
+                bulk_discount_rate=0.28
+            )
+        ]
     },
     "retail": {
         "business": BusinessProfile(
@@ -60,26 +114,56 @@ PROFILES = {
             owner_email="shipping-buyer@restock.ai",
             currency="USD"
         ),
-        "inventory": InventoryItem(
-            id="inv_box_03",
-            name="Corrugated Shipping Boxes (Medium)",
-            category="Supplies / Packaging",
-            current_stock=160,
-            min_threshold=50,
-            optimal_stock=200,
-            unit="boxes"
-        )
+        "inventory": [
+            InventoryItem(
+                id="inv_box_01",
+                name="Corrugated Shipping Boxes (Medium)",
+                category="Supplies / Packaging",
+                current_stock=20,
+                min_threshold=50,
+                optimal_stock=200,
+                unit="boxes",
+                bulk_threshold_qty=400,
+                bulk_discount_rate=0.35
+            ),
+            InventoryItem(
+                id="inv_box_02",
+                name="Water-Activated Reinforced Kraft Tape",
+                category="Supplies / Adhesive",
+                current_stock=15,
+                min_threshold=25,
+                optimal_stock=60,
+                unit="rolls",
+                bulk_threshold_qty=100,
+                bulk_discount_rate=0.20
+            )
+        ]
     }
 }
 
 CURRENT_PROFILE_KEY = "coffee"
 CURRENT_BUSINESS = PROFILES["coffee"]["business"]
-CURRENT_INVENTORY = PROFILES["coffee"]["inventory"]
+CURRENT_ITEM_INDEX = 0
+
+def get_active_item() -> InventoryItem:
+    items = PROFILES[CURRENT_PROFILE_KEY]["inventory"]
+    global CURRENT_ITEM_INDEX
+    if CURRENT_ITEM_INDEX >= len(items):
+        CURRENT_ITEM_INDEX = 0
+    return items[CURRENT_ITEM_INDEX]
 
 CURRENT_BUDGET_CAP = 75.0
 
+# ----------------- Business & Multi-Tenant Endpoints -----------------
+
 class SwitchProfileRequest(BaseModel):
     profile_key: str
+
+class UpdateBusinessRequest(BaseModel):
+    business_name: str
+    business_type: str
+    owner_email: str
+    currency: Optional[str] = "USD"
 
 @app.get("/api/profiles")
 def get_profiles():
@@ -94,39 +178,128 @@ def get_profiles():
 
 @app.post("/api/business/switch")
 def switch_profile(body: SwitchProfileRequest):
-    global CURRENT_PROFILE_KEY, CURRENT_BUSINESS, CURRENT_INVENTORY
+    global CURRENT_PROFILE_KEY, CURRENT_BUSINESS, CURRENT_ITEM_INDEX
     if body.profile_key in PROFILES:
         CURRENT_PROFILE_KEY = body.profile_key
         CURRENT_BUSINESS = PROFILES[body.profile_key]["business"]
-        CURRENT_INVENTORY = PROFILES[body.profile_key]["inventory"]
+        CURRENT_ITEM_INDEX = 0
     return {
         "current_key": CURRENT_PROFILE_KEY,
         "business": CURRENT_BUSINESS,
-        "inventory": CURRENT_INVENTORY
+        "inventory": get_active_item(),
+        "all_items": PROFILES[CURRENT_PROFILE_KEY]["inventory"]
     }
-
-class BudgetCapUpdate(BaseModel):
-    budget_cap: float
 
 @app.get("/api/business", response_model=BusinessProfile)
 def get_business():
     return CURRENT_BUSINESS
 
+@app.put("/api/business/profile", response_model=BusinessProfile)
+def update_business_profile(body: UpdateBusinessRequest):
+    """Allows shop owners to register or update their store settings"""
+    global CURRENT_BUSINESS
+    CURRENT_BUSINESS.business_name = body.business_name
+    CURRENT_BUSINESS.business_type = body.business_type
+    CURRENT_BUSINESS.owner_email = body.owner_email
+    if body.currency:
+        CURRENT_BUSINESS.currency = body.currency
+    PROFILES[CURRENT_PROFILE_KEY]["business"] = CURRENT_BUSINESS
+    return CURRENT_BUSINESS
+
+# ----------------- Multi-Item Inventory Endpoints -----------------
+
+class AddItemRequest(BaseModel):
+    name: str
+    category: str
+    current_stock: int
+    min_threshold: int
+    optimal_stock: int
+    unit: str
+    bulk_threshold_qty: Optional[int] = 40
+    bulk_discount_rate: Optional[float] = 0.25
+
+class UpdateItemRequest(BaseModel):
+    current_stock: Optional[int] = None
+    min_threshold: Optional[int] = None
+    optimal_stock: Optional[int] = None
+    bulk_threshold_qty: Optional[int] = None
+    bulk_discount_rate: Optional[float] = None
+
+@app.get("/api/inventory/all", response_model=List[InventoryItem])
+def get_all_inventory():
+    """Returns the multi-item inventory catalog for the active shop"""
+    return PROFILES[CURRENT_PROFILE_KEY]["inventory"]
+
 @app.get("/api/inventory", response_model=InventoryItem)
 def get_inventory():
-    return CURRENT_INVENTORY
+    """Returns the currently active tracked item"""
+    return get_active_item()
+
+@app.post("/api/inventory/select/{item_id}", response_model=InventoryItem)
+def select_active_item(item_id: str):
+    """Selects an item from the catalog to run agent sourcing on"""
+    global CURRENT_ITEM_INDEX
+    items = PROFILES[CURRENT_PROFILE_KEY]["inventory"]
+    for idx, item in enumerate(items):
+        if item.id == item_id:
+            CURRENT_ITEM_INDEX = idx
+            return item
+    return get_active_item()
+
+@app.post("/api/inventory/add", response_model=InventoryItem)
+def add_inventory_item(body: AddItemRequest):
+    """Shop owner dynamically registers a new item to track in their inventory"""
+    new_item = InventoryItem(
+        id=f"inv_custom_{uuid.uuid4().hex[:6]}",
+        name=body.name,
+        category=body.category,
+        current_stock=body.current_stock,
+        min_threshold=body.min_threshold,
+        optimal_stock=body.optimal_stock,
+        unit=body.unit,
+        bulk_threshold_qty=body.bulk_threshold_qty or 40,
+        bulk_discount_rate=body.bulk_discount_rate or 0.25
+    )
+    PROFILES[CURRENT_PROFILE_KEY]["inventory"].append(new_item)
+    return new_item
+
+@app.put("/api/inventory/{item_id}", response_model=InventoryItem)
+def update_inventory_item(item_id: str, body: UpdateItemRequest):
+    """Shop owner configures custom bulk threshold, stock level, or restock target"""
+    items = PROFILES[CURRENT_PROFILE_KEY]["inventory"]
+    for item in items:
+        if item.id == item_id:
+            if body.current_stock is not None:
+                item.current_stock = body.current_stock
+            if body.min_threshold is not None:
+                item.min_threshold = body.min_threshold
+            if body.optimal_stock is not None:
+                item.optimal_stock = body.optimal_stock
+            if body.bulk_threshold_qty is not None:
+                item.bulk_threshold_qty = body.bulk_threshold_qty
+            if body.bulk_discount_rate is not None:
+                item.bulk_discount_rate = body.bulk_discount_rate
+            return item
+    return get_active_item()
 
 @app.post("/api/inventory/simulate-low", response_model=InventoryItem)
 def simulate_low_inventory():
-    """Drops stock to 40% of min threshold to trigger agent deficit"""
-    CURRENT_INVENTORY.current_stock = max(2, int(CURRENT_INVENTORY.min_threshold * 0.4))
-    return CURRENT_INVENTORY
+    """Drops the active item stock to 40% of min threshold to trigger agent deficit"""
+    item = get_active_item()
+    item.current_stock = max(2, int(item.min_threshold * 0.4))
+    return item
 
 @app.post("/api/inventory/reset", response_model=InventoryItem)
 def reset_inventory():
-    """Restores healthy baseline stock (80% of optimal target)"""
-    CURRENT_INVENTORY.current_stock = int(CURRENT_INVENTORY.optimal_stock * 0.8)
-    return CURRENT_INVENTORY
+    """Restores healthy baseline stock on active item"""
+    item = get_active_item()
+    item.current_stock = int(item.optimal_stock * 0.8)
+    return item
+
+# ----------------- Safety Guardrail & Budget Cap -----------------
+
+class BudgetCapUpdate(BaseModel):
+    budget_cap: float
 
 @app.get("/api/budget-cap")
 def get_budget_cap():
@@ -138,16 +311,25 @@ def set_budget_cap(body: BudgetCapUpdate):
     CURRENT_BUDGET_CAP = body.budget_cap
     return {"budget_cap": CURRENT_BUDGET_CAP}
 
+# ----------------- Researcher Agent Endpoint -----------------
+
+class SourceRequest(BaseModel):
+    item_id: Optional[str] = None
+
 @app.post("/api/agent/source", response_model=SourcingResult)
-async def trigger_agent_sourcing():
+async def trigger_agent_sourcing(body: Optional[SourceRequest] = None):
     """Wakes the Researcher Agent to scan suppliers and return scored quotes"""
+    if body and body.item_id:
+        select_active_item(body.item_id)
+
+    item = get_active_item()
     return await run_researcher_agent(
-        CURRENT_INVENTORY, 
+        item, 
         business=CURRENT_BUSINESS, 
         budget_cap=CURRENT_BUDGET_CAP
     )
 
-from typing import Optional
+# ----------------- PayPal Orders API Endpoints -----------------
 
 class CreateOrderRequest(BaseModel):
     amount: float
@@ -175,10 +357,12 @@ async def api_capture_paypal_order(body: CaptureOrderRequest):
     result = await capture_order(body.order_id)
     
     if result.get("status") == "COMPLETED":
-        # Reconcile inventory: restore stock to optimal level
-        CURRENT_INVENTORY.current_stock += body.quantity
-        result["new_stock"] = CURRENT_INVENTORY.current_stock
+        item = get_active_item()
+        item.current_stock += body.quantity
+        result["new_stock"] = item.current_stock
     return result
+
+# ----------------- PDF Receipt Generator Endpoint -----------------
 
 class ReceiptRequest(BaseModel):
     supplier_name: str

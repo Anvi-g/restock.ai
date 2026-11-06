@@ -3,7 +3,7 @@ import json
 import httpx
 from typing import List
 from dotenv import load_dotenv
-from schemas import InventoryItem, SupplierQuote, SourcingResult, BusinessProfile
+from schemas import InventoryItem, SupplierQuote, SourcingResult, BusinessProfile, BulkOpportunity
 from suppliers import fetch_supplier_quotes
 
 load_dotenv()
@@ -118,6 +118,28 @@ async def run_researcher_agent(
         logs.append(f"[AGENT] ⚡ Guardrail Check: Order total (${total_cost:.2f}) is WITHIN budget cap (${budget_cap:.2f}). Pre-authorized for autonomous PayPal capture.")
         status = "AUTO_APPROVED"
 
+    # 5. Economic Order Quantity (EOQ) / Bulk Tier Opportunity
+    bulk_opp = None
+    if quantity_needed >= 15 and best_quote:
+        bulk_qty = max(40, quantity_needed + 14)
+        bulk_unit_price = round(best_quote.unit_price * 0.75, 2)  # 25% discount tier
+        bulk_total = round((bulk_unit_price * bulk_qty) + best_quote.shipping_fee, 2)
+        regular_equiv_cost = round((best_quote.unit_price * bulk_qty) + best_quote.shipping_fee, 2)
+        savings = round(regular_equiv_cost - bulk_total, 2)
+
+        bulk_opp = BulkOpportunity(
+            is_available=True,
+            recommended_qty=bulk_qty,
+            unit_price=bulk_unit_price,
+            total_cost=bulk_total,
+            estimated_savings=savings,
+            pitch=(
+                f"Wholesale Tier Opportunity: Upgrading to {bulk_qty} {item.unit} "
+                f"drops unit price to ${bulk_unit_price:.2f} (saves ${savings:.2f} over regular re-orders)."
+            )
+        )
+        logs.append(f"[AGENT] 💡 EOQ Insight: Bulk tier discount identified at {bulk_qty} units (saves ${savings:.2f}).")
+
     return SourcingResult(
         item=item,
         quantity_needed=quantity_needed,
@@ -128,4 +150,5 @@ async def run_researcher_agent(
         status=status,
         agent_logs=logs,
         market_average_cost=round(avg_cost, 2),
+        bulk_opportunity=bulk_opp,
     )

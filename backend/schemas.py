@@ -9,6 +9,8 @@ class InventoryItem(BaseModel):
     min_threshold: int
     optimal_stock: int
     unit: str
+    bulk_threshold_qty: Optional[int] = 40  
+    bulk_discount_rate: Optional[float] = 0.25  
 
 class SupplierQuote(BaseModel):
     supplier_id: str
@@ -22,6 +24,14 @@ class SupplierQuote(BaseModel):
     ai_rationale: Optional[str] = None
     savings_vs_avg: Optional[float] = None 
 
+class BulkOpportunity(BaseModel):
+    is_available: bool = False
+    recommended_qty: int = 40
+    unit_price: float = 10.80
+    total_cost: float = 447.00
+    estimated_savings: float = 148.00
+    pitch: Optional[str] = None
+
 class SourcingResult(BaseModel):
     item: InventoryItem
     quantity_needed: int
@@ -32,6 +42,7 @@ class SourcingResult(BaseModel):
     status: str # "AUTO_APPROVED", "AWAITING_APPROVAL", "OPTIMAL"
     agent_logs: List[str]                    
     market_average_cost: float
+    bulk_opportunity: Optional[BulkOpportunity] = None
 
 class BusinessProfile(BaseModel):
     business_name: str = "Bean & Brew Roastery"
