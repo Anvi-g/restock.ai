@@ -1,9 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
 import type { ColDef, ICellRendererParams } from 'ag-grid-community';
 import type { SupplierQuote } from '../types';
-import { Sparkles, Clock, Star, CheckCircle2 } from 'lucide-react';
+import { Sparkles, Clock, Star, CheckCircle2, Search, TrendingDown } from 'lucide-react';
 
 // Register AG Grid Community modules
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -15,6 +15,7 @@ interface Props {
 }
 
 export const SourcingGrid: React.FC<Props> = ({ quotes, selectedSupplierId, onSelectSupplier }) => {
+  const [quickFilterText, setQuickFilterText] = useState(''); 
   const columnDefs = useMemo<ColDef<SupplierQuote>[]>(() => [
     {
       headerName: 'Supplier',
@@ -56,6 +57,22 @@ export const SourcingGrid: React.FC<Props> = ({ quotes, selectedSupplierId, onSe
         <span className="font-bold text-gray-900">${params.value?.toFixed(2)}</span>
       ),
       sort: 'asc', // Default sort by lowest total price
+    },
+    {
+      headerName: 'Savings vs Avg',
+      field: 'savings_vs_avg',
+      width: 145,
+      cellRenderer: (params: ICellRendererParams<SupplierQuote>) => {
+        const savings = params.value ?? 0;
+        if (savings > 0) {
+          return (
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+              <TrendingDown className="w-3 h-3" /> -${savings.toFixed(2)}
+            </span>
+          );
+        }
+        return <span className="text-xs text-slate-400">+${Math.abs(savings).toFixed(2)}</span>;
+      },
     },
     {
       headerName: 'Delivery Speed',
@@ -130,14 +147,34 @@ export const SourcingGrid: React.FC<Props> = ({ quotes, selectedSupplierId, onSe
   }), []);
 
   return (
-    <div className="ag-theme-quartz w-full h-[320px] rounded-xl overflow-hidden border border-gray-200 shadow-sm">
-      <AgGridReact
-        rowData={quotes}
-        columnDefs={columnDefs}
-        defaultColDef={defaultColDef}
-        animateRows={true}
-        rowSelection="single"
-      />
+    <div className="space-y-3">
+      {/* AG Grid Quick Search Toolbar */}
+      <div className="flex items-center justify-between">
+        <div className="relative w-64">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder="Quick search suppliers..."
+            value={quickFilterText}
+            onChange={(e) => setQuickFilterText(e.target.value)}
+            className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 shadow-2xs"
+          />
+        </div>
+        <span className="text-[11px] text-slate-400 font-medium">
+          Showing {quotes.length} live supplier quotes
+        </span>
+      </div>
+      {/* AG Grid Container */}
+      <div className="ag-theme-quartz w-full h-[320px] rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+        <AgGridReact
+          rowData={quotes}
+          columnDefs={columnDefs}
+          defaultColDef={defaultColDef}
+          quickFilterText={quickFilterText}
+          animateRows={true}
+          rowSelection="single"
+        />
+      </div>
     </div>
   );
 };

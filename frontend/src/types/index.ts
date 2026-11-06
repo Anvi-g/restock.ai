@@ -18,6 +18,7 @@ export interface SupplierQuote {
   rating: number;
   is_recommended: boolean;
   ai_rationale?: string;
+  savings_vs_avg?: number;
 }
 
 export interface SourcingResult {
@@ -28,4 +29,6 @@ export interface SourcingResult {
   requires_approval: boolean;
   budget_cap: number;
   status: 'AUTO_APPROVED' | 'AWAITING_APPROVAL' | 'OPTIMAL';
+  agent_logs: string[];
+  market_average_cost: number;
 }

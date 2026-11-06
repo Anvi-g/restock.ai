@@ -4,6 +4,7 @@ import { getInventory, simulateLowInventory, resetInventory, runAgentSourcing, g
 import { SourcingGrid } from './components/SourcingGrid';
 import { BudgetCapControl } from './components/BudgetCapControl';
 import { ApprovalCard } from './components/ApprovalCard';
+import { AgentTerminal } from './components/AgentTerminal';
 import { Bot, RefreshCw, AlertTriangle, CheckCircle, PackageSearch } from 'lucide-react';
 
 export default function App() {
@@ -204,6 +205,8 @@ export default function App() {
                 onApproveAndPay={handleApproveAndPay}
               />
             )}
+            {/* Agent Live Activity & Reasoning Terminal */}
+            <AgentTerminal logs={sourcing.agent_logs} isStreaming={loadingAgent} />
           </div>
         )}
       </main>
