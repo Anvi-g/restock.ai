@@ -114,7 +114,7 @@ export const SourcingGrid: React.FC<Props> = ({ quotes, selectedSupplierId, onSe
       filter: false,
       cellRenderer: (params: ICellRendererParams<SupplierQuote>) => {
         const data = params.data;
-        if (!data) return null;
+        if (!data || data.supplier_id === 'pinned_avg') return null;
         const isSelected = selectedSupplierId === data.supplier_id;
         return (
           <div className="flex items-center h-full">
@@ -139,6 +139,31 @@ export const SourcingGrid: React.FC<Props> = ({ quotes, selectedSupplierId, onSe
       },
     },
   ], [selectedSupplierId, onSelectSupplier]);
+
+  // Calculate Market Benchmark Averages for the Pinned Bottom Row
+  const pinnedBottomRowData = useMemo(() => {
+    if (!quotes || quotes.length === 0) return [];
+    const count = quotes.length;
+    const avgPrice = quotes.reduce((acc, q) => acc + q.unit_price, 0) / count;
+    const avgShipping = quotes.reduce((acc, q) => acc + q.shipping_fee, 0) / count;
+    const avgTotal = quotes.reduce((acc, q) => acc + q.total_cost, 0) / count;
+    const avgLead = Math.round(quotes.reduce((acc, q) => acc + q.lead_time_days, 0) / count);
+    const avgRating = quotes.reduce((acc, q) => acc + q.rating, 0) / count;
+
+    return [
+      {
+        supplier_id: 'pinned_avg',
+        supplier_name: '📊 Market Benchmark Average',
+        unit_price: avgPrice,
+        shipping_fee: avgShipping,
+        total_cost: avgTotal,
+        lead_time_days: avgLead,
+        rating: avgRating,
+        is_recommended: false,
+        savings_vs_avg: 0,
+      },
+    ];
+  }, [quotes]);
 
   const defaultColDef = useMemo<ColDef>(() => ({
     sortable: true,
@@ -171,6 +196,7 @@ export const SourcingGrid: React.FC<Props> = ({ quotes, selectedSupplierId, onSe
           columnDefs={columnDefs}
           defaultColDef={defaultColDef}
           quickFilterText={quickFilterText}
+          pinnedBottomRowData={pinnedBottomRowData}
           animateRows={true}
           rowSelection="single"
         />

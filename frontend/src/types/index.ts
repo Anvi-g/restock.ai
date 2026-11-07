@@ -6,6 +6,8 @@ export interface InventoryItem {
   min_threshold: number;
   optimal_stock: number;
   unit: string;
+  bulk_threshold_qty?: number;
+  bulk_discount_rate?: number;
 }
 
 export interface SupplierQuote {
@@ -31,4 +33,14 @@ export interface SourcingResult {
   status: 'AUTO_APPROVED' | 'AWAITING_APPROVAL' | 'OPTIMAL';
   agent_logs: string[];
   market_average_cost: number;
+  bulk_opportunity?: BulkOpportunity;
+}
+
+export interface BulkOpportunity {
+  is_available: boolean;
+  recommended_qty: number;
+  unit_price: number;
+  total_cost: number;
+  estimated_savings: number;
+  pitch?: string;
 }

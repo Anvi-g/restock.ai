@@ -7,14 +7,17 @@ import {
   runAgentSourcing, 
   getBudgetCap, 
   updateBudgetCap,
-  switchProfile
+  switchProfile,
+  createPayPalOrder,
+  capturePayPalOrder
 } from './services/api';
 import { SourcingGrid } from './components/SourcingGrid';
 import { BudgetCapControl } from './components/BudgetCapControl';
 import { ApprovalCard } from './components/ApprovalCard';
 import { AgentTerminal } from './components/AgentTerminal';
 import { PayPalModal } from './components/PayPalModal';
-import { Bot, RefreshCw, AlertTriangle, CheckCircle, PackageSearch, ChevronDown } from 'lucide-react';
+import { AddItemModal } from './components/AddItemModal';
+import { Bot, RefreshCw, AlertTriangle, CheckCircle, PackageSearch, ChevronDown, Plus } from 'lucide-react';
 
 const PROFILES = [
   { key: 'coffee', name: 'Bean & Brew Roastery', type: 'Specialty Coffee Shop', icon: '☕', email: 'buyer-sandbox@restock.ai' },
@@ -29,8 +32,10 @@ export default function App() {
   const [budgetCap, setBudgetCap] = useState<number>(75);
   const [loadingAgent, setLoadingAgent] = useState(false);
   const [showPayPalModal, setShowPayPalModal] = useState(false);
+  const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [currentProfile, setCurrentProfile] = useState(PROFILES[0]);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [isBulkSelected, setIsBulkSelected] = useState(false);
 
   // Load inventory on mount
   useEffect(() => {
@@ -69,6 +74,7 @@ export default function App() {
     setInventory(res.data);
     setSourcing(null);
     setSelectedQuote(null);
+    setIsBulkSelected(false);
   };
 
   const handleReset = async () => {
@@ -76,6 +82,7 @@ export default function App() {
     setInventory(res.data);
     setSourcing(null);
     setSelectedQuote(null);
+    setIsBulkSelected(false);
   };
 
   const handleWakeAgent = async () => {
@@ -90,8 +97,49 @@ export default function App() {
     }
   };
 
-  const handleApproveAndPay = () => {
-    setShowPayPalModal(true);
+  const [isAutoExecuting, setIsAutoExecuting] = useState(false);
+
+  const handleApproveAndPay = async () => {
+    const currentQty = isBulkSelected && sourcing?.bulk_opportunity ? sourcing.bulk_opportunity.recommended_qty : sourcing?.quantity_needed || 0;
+    const currentCost = isBulkSelected && sourcing?.bulk_opportunity ? sourcing.bulk_opportunity.total_cost : selectedQuote?.total_cost || 0;
+    const exceedsCap = currentCost > budgetCap;
+
+    // If over budget cap: Open review modal for human verification
+    if (exceedsCap) {
+      setShowPayPalModal(true);
+      return;
+    }
+
+    // If under budget cap: Execute autonomously with zero manual sub-clicks!
+    if (!inventory || !selectedQuote) return;
+    setIsAutoExecuting(true);
+    try {
+      // 1. Agent creates PayPal order payload
+      const orderRes = await createPayPalOrder({
+        amount: currentCost,
+        supplier_name: selectedQuote.supplier_name,
+        item_name: inventory.name,
+        quantity: currentQty,
+      });
+
+      // 2. Agent immediately captures pre-authorized payment
+      const captureRes = await capturePayPalOrder({
+        order_id: orderRes.data.order_id,
+        quantity: currentQty,
+      });
+
+      // 3. Reconcile inventory and refresh state
+      setInventory((prev) => (prev ? { ...prev, current_stock: captureRes.data.new_stock } : prev));
+      setSourcing(null);
+      setSelectedQuote(null);
+      setIsBulkSelected(false);
+      alert(`⚡ Autonomous Execution Complete!\n\nOrder of ${currentQty} ${inventory.unit} captured via PayPal.\nPayPal Transaction ID: ${captureRes.data.transaction_id}\nStock replenished to ${captureRes.data.new_stock} ${inventory.unit}!`);
+    } catch (err) {
+      console.error("Autonomous execution failed, falling back to manual modal:", err);
+      setShowPayPalModal(true);
+    } finally {
+      setIsAutoExecuting(false);
+    }
   };
 
   const handleSwitchProfile = async (profile: typeof PROFILES[0]) => {
@@ -195,9 +243,19 @@ export default function App() {
           {inventory && (
             <div className="md:col-span-2 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
               <div className="space-y-1">
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Tracked Item</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Tracked Item</span>
+                  <button
+                    onClick={() => setShowAddItemModal(true)}
+                    className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-md text-[11px] font-bold inline-flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                  >
+                    <Plus className="w-3 h-3" /> Add Item
+                  </button>
+                </div>
                 <h2 className="text-lg font-bold text-slate-900">{inventory.name}</h2>
-                <p className="text-xs text-slate-500">Category: {inventory.category}</p>
+                <p className="text-xs text-slate-500">
+                  Category: {inventory.category} {inventory.bulk_threshold_qty ? `• Custom Bulk Target: ${inventory.bulk_threshold_qty} ${inventory.unit}` : ''}
+                </p>
               </div>
               <div className="flex items-center gap-6">
                 <div className="text-right">
@@ -252,6 +310,40 @@ export default function App() {
                 </div>
               )}
             </div>
+                        {/* Bulk Tier Discount Opportunity Banner */}
+            {sourcing.bulk_opportunity?.is_available && (
+              <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 p-4 rounded-2xl flex items-center justify-between shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold text-lg shadow-xs">
+                    💡
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-purple-900 uppercase tracking-wider">
+                        Wholesale Bulk Tier Detected
+                      </span>
+                      <span className="text-[11px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-300">
+                        Save ${sourcing.bulk_opportunity.estimated_savings.toFixed(2)}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      {sourcing.bulk_opportunity.pitch}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setIsBulkSelected(!isBulkSelected)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs ${
+                    isBulkSelected
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-white hover:bg-purple-50 text-purple-700 border border-purple-300'
+                  }`}
+                >
+                  {isBulkSelected ? '✓ Bulk Tier Applied (40 units)' : 'Upgrade to Bulk Tier'}
+                </button>
+              </div>
+            )}
             {/* AG Grid */}
             <SourcingGrid
               quotes={sourcing.quotes}
@@ -261,12 +353,17 @@ export default function App() {
             {/* Human-in-the-Loop Decision Card */}
             {inventory && selectedQuote && (
               <ApprovalCard
-                item={inventory}
-                quantityNeeded={sourcing.quantity_needed}
-                selectedQuote={selectedQuote}
-                budgetCap={budgetCap}
-                onApproveAndPay={handleApproveAndPay}
-              />
+              item={inventory}
+              quantityNeeded={isBulkSelected && sourcing.bulk_opportunity ? sourcing.bulk_opportunity.recommended_qty : sourcing.quantity_needed}
+              selectedQuote={
+                isBulkSelected && sourcing.bulk_opportunity
+                  ? { ...selectedQuote, total_cost: sourcing.bulk_opportunity.total_cost, unit_price: sourcing.bulk_opportunity.unit_price }
+                  : selectedQuote
+              }
+              budgetCap={budgetCap}
+              onApproveAndPay={handleApproveAndPay}
+              isProcessing={isAutoExecuting}
+            />
             )}
             {/* Agent Live Activity & Reasoning Terminal */}
             <AgentTerminal logs={sourcing.agent_logs} isStreaming={loadingAgent} />
@@ -274,12 +371,28 @@ export default function App() {
         )}
       </main>
 
+      {/* Add Inventory Item Modal */}
+      {showAddItemModal && (
+        <AddItemModal
+          onClose={() => setShowAddItemModal(false)}
+          onItemAdded={(newItem) => {
+            setInventory(newItem);
+            setSourcing(null);
+            setSelectedQuote(null);
+          }}
+        />
+      )}
+
       {/* PayPal Orders API Checkout Modal */}
       {showPayPalModal && inventory && selectedQuote && sourcing && (
-        <PayPalModal
+                <PayPalModal
           item={inventory}
-          quantity={sourcing.quantity_needed}
-          quote={selectedQuote}
+          quantity={isBulkSelected && sourcing.bulk_opportunity ? sourcing.bulk_opportunity.recommended_qty : sourcing.quantity_needed}
+          quote={
+            isBulkSelected && sourcing.bulk_opportunity
+              ? { ...selectedQuote, total_cost: sourcing.bulk_opportunity.total_cost, unit_price: sourcing.bulk_opportunity.unit_price }
+              : selectedQuote
+          }
           onClose={() => setShowPayPalModal(false)}
           onSuccess={(newStock) => {
             setInventory((prev) => (prev ? { ...prev, current_stock: newStock } : prev));

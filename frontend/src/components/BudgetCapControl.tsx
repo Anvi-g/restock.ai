@@ -7,7 +7,7 @@ interface Props {
 }
 
 export const BudgetCapControl: React.FC<Props> = ({ budgetCap, onUpdateBudgetCap }) => {
-  const presets = [0, 50, 100, 200, 500];
+  const presets = [0, 75, 150, 300, 500, 1000];
   const isZeroTrust = budgetCap === 0;
 
   return (
@@ -20,49 +20,44 @@ export const BudgetCapControl: React.FC<Props> = ({ budgetCap, onUpdateBudgetCap
             {isZeroTrust ? <ShieldAlert className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
           </div>
           <div>
-            <h3 className="text-sm font-bold text-slate-900">Autonomous Safety Guardrail</h3>
+            <h3 className="text-sm font-bold text-slate-900">Safety Spending Cap</h3>
             <p className="text-xs text-slate-500">
-              {isZeroTrust ? 'Zero-Trust: Human must approve 100% of orders' : 'Auto-buy under cap; prompt approval if over.'}
+              {isZeroTrust ? 'Zero-Trust: 100% of orders require human approval' : 'Auto-buy under cap; prompt approval if over.'}
             </p>
           </div>
         </div>
-        <div className="text-right">
-          <div className="flex items-center justify-end text-emerald-700 font-extrabold text-lg bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-xl">
-            <DollarSign className="w-4 h-4 -mr-1" />
-            {budgetCap}
-          </div>
-          <span className="text-[10px] text-slate-400 font-medium block mt-0.5">
-            ≈ ₹{(budgetCap * 84).toLocaleString()}
-          </span>
+
+        {/* Uncapped Editable Input */}
+        <div className="flex items-center gap-1 bg-emerald-50 border border-emerald-300 rounded-xl px-2.5 py-1 focus-within:ring-2 focus-within:ring-emerald-500">
+          <DollarSign className="w-4 h-4 text-emerald-700 font-bold" />
+          <input
+            type="number"
+            min="0"
+            step="10"
+            value={budgetCap}
+            onChange={(e) => onUpdateBudgetCap(Math.max(0, Number(e.target.value) || 0))}
+            className="w-20 bg-transparent text-emerald-800 font-extrabold text-base focus:outline-none text-right"
+          />
         </div>
       </div>
-      <div className="space-y-2">
-        <input
-          type="range"
-          min="0"
-          max="600"
-          step="10"
-          value={budgetCap}
-          onChange={(e) => onUpdateBudgetCap(Number(e.target.value))}
-          className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
-        />
-        <div className="flex items-center justify-between gap-2 pt-1">
-          <span className="text-[11px] text-slate-400 font-medium shrink-0">Presets:</span>
-          <div className="flex flex-wrap gap-1 justify-end">
-            {presets.map((val) => (
-              <button
-                key={val}
-                onClick={() => onUpdateBudgetCap(val)}
-                className={`px-2 py-0.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
-                  budgetCap === val
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                }`}
-              >
-                {val === 0 ? '$0 (Strict)' : `$${val}`}
-              </button>
-            ))}
-          </div>
+
+      {/* Quick Presets */}
+      <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
+        <span className="text-[11px] text-slate-400 font-medium shrink-0">Presets:</span>
+        <div className="flex flex-wrap gap-1 justify-end">
+          {presets.map((val) => (
+            <button
+              key={val}
+              onClick={() => onUpdateBudgetCap(val)}
+              className={`px-2 py-0.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                budgetCap === val
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+              }`}
+            >
+              {val === 0 ? '$0 (Strict)' : `$${val}`}
+            </button>
+          ))}
         </div>
       </div>
     </div>
