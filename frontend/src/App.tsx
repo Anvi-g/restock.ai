@@ -25,25 +25,15 @@ const PROFILES = [
   { key: 'retail', name: 'EcoBox Packaging Co', type: 'E-commerce Logistics', icon: '📦', email: 'shipping-buyer@restock.ai' },
 ];
 
-const DEFAULT_INVENTORY_ITEM: InventoryItem = {
-  id: "inv_coffee_01",
-  name: "Organic Colombian Espresso Beans (1kg)",
-  category: "Perishables / Coffee",
-  current_stock: 4,
-  min_threshold: 10,
-  optimal_stock: 30,
-  unit: "bags",
-  bulk_threshold_qty: 40,
-  bulk_discount_rate: 0.25
-};
-
 export default function App() {
-  const [inventory, setInventory] = useState<InventoryItem>(DEFAULT_INVENTORY_ITEM);
+  const [inventory, setInventory] = useState<InventoryItem | null>(null);
   const [sourcing, setSourcing] = useState<SourcingResult | null>(null);
   const [selectedQuote, setSelectedQuote] = useState<SupplierQuote | null>(null);
   const [budgetCap, setBudgetCap] = useState<number>(75);
   const [loadingAgent, setLoadingAgent] = useState(false);
   const [showPayPalModal, setShowPayPalModal] = useState(false);
+  const [modalInitialStep, setModalInitialStep] = useState<'REVIEW' | 'SUCCESS'>('REVIEW');
+  const [modalOrderData, setModalOrderData] = useState<{ orderId: string; txnId: string; newStock: number } | null>(null);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [currentProfile, setCurrentProfile] = useState(PROFILES[0]);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -55,54 +45,43 @@ export default function App() {
     fetchBudgetCap();
   }, []);
 
-  const fetchInventory = async () => {
+    const fetchInventory = async () => {
     try {
       const res = await getInventory();
-      if (res.data) setInventory(res.data);
+      setInventory(res.data);
     } catch (err) {
-      console.warn("Backend not reachable yet (waking up or offline), using default item:", err);
+      console.warn("Backend not reachable yet:", err);
     }
   };
 
-  const fetchBudgetCap = async () => {
+   const fetchBudgetCap = async () => {
     try {
       const res = await getBudgetCap();
       setBudgetCap(res.data.budget_cap);
     } catch (err) {
-      console.warn("Could not fetch budget cap from backend:", err);
+      console.warn("Could not fetch budget cap:", err);
     }
   };
-
   const handleUpdateBudgetCap = async (newCap: number) => {
     setBudgetCap(newCap);
     try {
       await updateBudgetCap(newCap);
     } catch (err) {
-      console.warn("Failed to sync budget cap with backend:", err);
+      console.error("Failed to sync budget cap:", err);
     }
   };
 
   const handleSimulateLow = async () => {
-    try {
-      const res = await simulateLowInventory();
-      setInventory(res.data);
-    } catch (err) {
-      console.warn("Backend offline or sleeping, running client-side simulation:", err);
-      setInventory((prev) => ({ ...prev, current_stock: 4 }));
-    }
+    const res = await simulateLowInventory();
+    setInventory(res.data);
     setSourcing(null);
     setSelectedQuote(null);
     setIsBulkSelected(false);
   };
 
   const handleReset = async () => {
-    try {
-      const res = await resetInventory();
-      setInventory(res.data);
-    } catch (err) {
-      console.warn("Backend offline or sleeping, running client-side reset:", err);
-      setInventory((prev) => ({ ...prev, current_stock: prev.optimal_stock || 30 }));
-    }
+    const res = await resetInventory();
+    setInventory(res.data);
     setSourcing(null);
     setSelectedQuote(null);
     setIsBulkSelected(false);
@@ -115,82 +94,6 @@ export default function App() {
       setSourcing(res.data);
       const topPick = res.data.quotes.find((q) => q.is_recommended);
       if (topPick) setSelectedQuote(topPick);
-    } catch (err) {
-      console.warn("Backend sourcing error, generating fallback quote matrix:", err);
-      const needed = Math.max(0, inventory.optimal_stock - inventory.current_stock) || 26;
-      const fallbackQuotes: SupplierQuote[] = [
-        {
-          supplier_id: "sup_apex",
-          supplier_name: "Apex Wholesale Roasters",
-          unit_price: 14.50,
-          shipping_fee: 15.00,
-          total_cost: Math.round((14.50 * needed + 15.00) * 100) / 100,
-          lead_time_days: 2,
-          rating: 4.9,
-          is_recommended: true,
-          ai_rationale: "Apex Wholesale delivers the optimal balance of certified grade-A quality, 2-day lead time, and lowest net unit cost.",
-          savings_vs_avg: 18.50
-        },
-        {
-          supplier_id: "sup_bulk",
-          supplier_name: "Global Bulk Commodities",
-          unit_price: 12.00,
-          shipping_fee: 35.00,
-          total_cost: Math.round((12.00 * needed + 35.00) * 100) / 100,
-          lead_time_days: 7,
-          rating: 4.2,
-          is_recommended: false
-        },
-        {
-          supplier_id: "sup_express",
-          supplier_name: "NextDay Express Provisions",
-          unit_price: 18.00,
-          shipping_fee: 10.00,
-          total_cost: Math.round((18.00 * needed + 10.00) * 100) / 100,
-          lead_time_days: 1,
-          rating: 4.7,
-          is_recommended: false
-        },
-        {
-          supplier_id: "sup_local",
-          supplier_name: "Artisan Direct Collective",
-          unit_price: 16.00,
-          shipping_fee: 5.00,
-          total_cost: Math.round((16.00 * needed + 5.00) * 100) / 100,
-          lead_time_days: 3,
-          rating: 4.5,
-          is_recommended: false
-        }
-      ];
-      const avgCost = Math.round(fallbackQuotes.reduce((acc, q) => acc + q.total_cost, 0) / fallbackQuotes.length * 100) / 100;
-      const fallbackResult: SourcingResult = {
-        item: inventory,
-        quantity_needed: needed,
-        budget_cap: budgetCap,
-        requires_approval: (fallbackQuotes[0].total_cost > budgetCap),
-        status: (fallbackQuotes[0].total_cost <= budgetCap) ? 'AUTO_APPROVED' : 'AWAITING_APPROVAL',
-        quotes: fallbackQuotes,
-        recommended_supplier_id: fallbackQuotes[0].supplier_id,
-        market_average_cost: avgCost,
-        bulk_opportunity: {
-          is_available: true,
-          recommended_qty: 40,
-          unit_price: 10.88,
-          total_cost: 450.00,
-          estimated_savings: 148.00,
-          pitch: "Order 40 units (wholesale tier) to unlock 25% off per unit, saving $148.00."
-        },
-        agent_logs: [
-          "[AGENT_INIT] Autonomous Procurement Agent initialized (MCDA mode)",
-          `[DEFICIT_TRIGGER] Stock level ${inventory.current_stock} < safety threshold ${inventory.min_threshold}`,
-          `[MARKET_SCAN] Queried 4 certified B2B suppliers for ${inventory.name}`,
-          "[MCDA_EVALUATION] Scoring suppliers on Price (40%), Speed (35%), Reliability (25%)",
-          "[OPTIMIZATION] Apex Wholesale identified as top composite recommendation (Score: 94.2)",
-          `[GUARDRAIL_CHECK] Order total $${fallbackQuotes[0].total_cost} evaluated against budget cap $${budgetCap}`
-        ]
-      };
-      setSourcing(fallbackResult);
-      setSelectedQuote(fallbackQuotes[0]);
     } finally {
       setLoadingAgent(false);
     }
@@ -205,6 +108,8 @@ export default function App() {
 
     // If over budget cap: Open review modal for human verification
     if (exceedsCap) {
+      setModalInitialStep('REVIEW');
+      setModalOrderData(null);
       setShowPayPalModal(true);
       return;
     }
@@ -227,14 +132,18 @@ export default function App() {
         quantity: currentQty,
       });
 
-      // 3. Reconcile inventory and refresh state
-      setInventory((prev) => (prev ? { ...prev, current_stock: captureRes.data.new_stock } : prev));
-      setSourcing(null);
-      setSelectedQuote(null);
-      setIsBulkSelected(false);
-      alert(`⚡ Autonomous Execution Complete!\n\nOrder of ${currentQty} ${inventory.unit} captured via PayPal.\nPayPal Transaction ID: ${captureRes.data.transaction_id}\nStock replenished to ${captureRes.data.new_stock} ${inventory.unit}!`);
+      // 3. Open official PayPal Modal directly in SUCCESS state (No alert() popup!)
+      setModalInitialStep('SUCCESS');
+      setModalOrderData({
+        orderId: orderRes.data.order_id,
+        txnId: captureRes.data.transaction_id,
+        newStock: captureRes.data.new_stock,
+      });
+      setShowPayPalModal(true);
     } catch (err) {
       console.error("Autonomous execution failed, falling back to manual modal:", err);
+      setModalInitialStep('REVIEW');
+      setModalOrderData(null);
       setShowPayPalModal(true);
     } finally {
       setIsAutoExecuting(false);
@@ -242,46 +151,19 @@ export default function App() {
   };
 
   const handleSwitchProfile = async (profile: typeof PROFILES[0]) => {
-    setCurrentProfile(profile);
-    setShowProfileMenu(false);
-    setSourcing(null);
-    setSelectedQuote(null);
     try {
       const res = await switchProfile(profile.key);
+      setCurrentProfile(profile);
       setInventory(res.data.inventory);
+      setSourcing(null);
+      setSelectedQuote(null);
+      setShowProfileMenu(false);
     } catch (err) {
-      console.warn("Backend sleeping, switching profile locally:", err);
-      if (profile.key === 'coffee') {
-        setInventory(DEFAULT_INVENTORY_ITEM);
-      } else if (profile.key === 'tech') {
-        setInventory({
-          id: "inv_tech_01",
-          name: "LiPo Battery Packs 4S 1500mAh",
-          category: "Hardware / Batteries",
-          current_stock: 3,
-          min_threshold: 8,
-          optimal_stock: 25,
-          unit: "packs",
-          bulk_threshold_qty: 30,
-          bulk_discount_rate: 0.20
-        });
-      } else {
-        setInventory({
-          id: "inv_retail_01",
-          name: "12x12x12 Corrugated Shipping Boxes",
-          category: "Packaging / Cartons",
-          current_stock: 45,
-          min_threshold: 100,
-          optimal_stock: 400,
-          unit: "boxes",
-          bulk_threshold_qty: 500,
-          bulk_discount_rate: 0.30
-        });
-      }
+      console.error("Failed to switch profile:", err);
     }
   };
 
-  const isLowStock = inventory.current_stock <= inventory.min_threshold;
+  const isLowStock = inventory && inventory.current_stock <= inventory.min_threshold;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
@@ -366,47 +248,49 @@ export default function App() {
         {/* Top Grid: Inventory Status + Budget Cap Guardrail */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Inventory Status (2 cols) */}
-          <div className="md:col-span-2 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Tracked Item</span>
-                <button
-                  onClick={() => setShowAddItemModal(true)}
-                  className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-md text-[11px] font-bold inline-flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
-                >
-                  <Plus className="w-3 h-3" /> Add Item
-                </button>
-              </div>
-              <h2 className="text-lg font-bold text-slate-900">{inventory.name}</h2>
-              <p className="text-xs text-slate-500">
-                Category: {inventory.category} {inventory.bulk_threshold_qty ? `• Custom Bulk Target: ${inventory.bulk_threshold_qty} ${inventory.unit}` : ''}
-              </p>
-            </div>
-            <div className="flex items-center gap-6">
-              <div className="text-right">
-                <span className="text-xs text-slate-400 block font-medium">Stock Level</span>
-                <span className={`text-2xl font-black ${isLowStock ? 'text-rose-600 animate-pulse' : 'text-slate-800'}`}>
-                  {inventory.current_stock} <span className="text-sm font-semibold text-slate-500">{inventory.unit}</span>
-                </span>
-              </div>
-              <div>
-                {isLowStock ? (
+          {inventory && (
+            <div className="md:col-span-2 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Tracked Item</span>
                   <button
-                    onClick={handleWakeAgent}
-                    disabled={loadingAgent}
-                    className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold flex items-center gap-2 shadow-md shadow-blue-600/30 transition-all cursor-pointer"
+                    onClick={() => setShowAddItemModal(true)}
+                    className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-md text-[11px] font-bold inline-flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
                   >
-                    <PackageSearch className="w-4 h-4" />
-                    {loadingAgent ? 'Scanning...' : 'Trigger Agent'}
+                    <Plus className="w-3 h-3" /> Add Item
                   </button>
-                ) : (
-                  <div className="flex items-center gap-1.5 text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg text-xs font-semibold">
-                    <CheckCircle className="w-4 h-4" /> Stock Healthy
-                  </div>
-                )}
+                </div>
+                <h2 className="text-lg font-bold text-slate-900">{inventory.name}</h2>
+                <p className="text-xs text-slate-500">
+                  Category: {inventory.category} {inventory.bulk_threshold_qty ? `• Custom Bulk Target: ${inventory.bulk_threshold_qty} ${inventory.unit}` : ''}
+                </p>
+              </div>
+              <div className="flex items-center gap-6">
+                <div className="text-right">
+                  <span className="text-xs text-slate-400 block font-medium">Stock Level</span>
+                  <span className={`text-2xl font-black ${isLowStock ? 'text-rose-600 animate-pulse' : 'text-slate-800'}`}>
+                    {inventory.current_stock} <span className="text-sm font-semibold text-slate-500">{inventory.unit}</span>
+                  </span>
+                </div>
+                <div>
+                  {isLowStock ? (
+                    <button
+                      onClick={handleWakeAgent}
+                      disabled={loadingAgent}
+                      className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold flex items-center gap-2 shadow-md shadow-blue-600/30 transition-all cursor-pointer"
+                    >
+                      <PackageSearch className="w-4 h-4" />
+                      {loadingAgent ? 'Scanning...' : 'Trigger Agent'}
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg text-xs font-semibold">
+                      <CheckCircle className="w-4 h-4" /> Stock Healthy
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          )}
           {/* Budget Cap Guardrail (1 col) */}
           <BudgetCapControl
             budgetCap={budgetCap}
@@ -474,23 +358,25 @@ export default function App() {
               selectedSupplierId={selectedQuote?.supplier_id}
               onSelectSupplier={(quote) => setSelectedQuote(quote)}
             />
+
+            {/* Agent Live Activity & Reasoning Terminal (Prominently visible directly under sourcing table) */}
+            <AgentTerminal logs={sourcing.agent_logs} isStreaming={loadingAgent} />
+
             {/* Human-in-the-Loop Decision Card */}
             {inventory && selectedQuote && (
               <ApprovalCard
-              item={inventory}
-              quantityNeeded={isBulkSelected && sourcing.bulk_opportunity ? sourcing.bulk_opportunity.recommended_qty : sourcing.quantity_needed}
-              selectedQuote={
-                isBulkSelected && sourcing.bulk_opportunity
-                  ? { ...selectedQuote, total_cost: sourcing.bulk_opportunity.total_cost, unit_price: sourcing.bulk_opportunity.unit_price }
-                  : selectedQuote
-              }
-              budgetCap={budgetCap}
-              onApproveAndPay={handleApproveAndPay}
-              isProcessing={isAutoExecuting}
-            />
+                item={inventory}
+                quantityNeeded={isBulkSelected && sourcing.bulk_opportunity ? sourcing.bulk_opportunity.recommended_qty : sourcing.quantity_needed}
+                selectedQuote={
+                  isBulkSelected && sourcing.bulk_opportunity
+                    ? { ...selectedQuote, total_cost: sourcing.bulk_opportunity.total_cost, unit_price: sourcing.bulk_opportunity.unit_price }
+                    : selectedQuote
+                }
+                budgetCap={budgetCap}
+                onApproveAndPay={handleApproveAndPay}
+                isProcessing={isAutoExecuting}
+              />
             )}
-            {/* Agent Live Activity & Reasoning Terminal */}
-            <AgentTerminal logs={sourcing.agent_logs} isStreaming={loadingAgent} />
           </div>
         )}
       </main>
@@ -509,7 +395,7 @@ export default function App() {
 
       {/* PayPal Orders API Checkout Modal */}
       {showPayPalModal && inventory && selectedQuote && sourcing && (
-                <PayPalModal
+        <PayPalModal
           item={inventory}
           quantity={isBulkSelected && sourcing.bulk_opportunity ? sourcing.bulk_opportunity.recommended_qty : sourcing.quantity_needed}
           quote={
@@ -517,12 +403,21 @@ export default function App() {
               ? { ...selectedQuote, total_cost: sourcing.bulk_opportunity.total_cost, unit_price: sourcing.bulk_opportunity.unit_price }
               : selectedQuote
           }
-          onClose={() => setShowPayPalModal(false)}
+          initialStep={modalInitialStep}
+          initialOrderData={modalOrderData || undefined}
+          onClose={() => {
+            setShowPayPalModal(false);
+            setModalOrderData(null);
+            setModalInitialStep('REVIEW');
+          }}
           onSuccess={(newStock) => {
             setInventory((prev) => (prev ? { ...prev, current_stock: newStock } : prev));
             setSourcing(null);
             setSelectedQuote(null);
+            setIsBulkSelected(false);
             setShowPayPalModal(false);
+            setModalOrderData(null);
+            setModalInitialStep('REVIEW');
           }}
         />
       )}

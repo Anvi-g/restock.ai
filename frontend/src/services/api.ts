@@ -38,3 +38,26 @@ export const capturePayPalOrder = (data: {
   order_id: string;
   quantity: number;
 }) => API.post('/paypal/capture-order', data);
+
+export const downloadReceipt = async (data: {
+  supplier_name: string;
+  item_name: string;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+  shipping_fee: number;
+  total_cost: number;
+  order_id: string;
+  transaction_id: string;
+}) => {
+  const response = await API.post('/receipt/download', data, { responseType: 'blob' });
+  const blob = new Blob([response.data], { type: 'application/pdf' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Restock_Receipt_${data.transaction_id.slice(0, 8)}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+};

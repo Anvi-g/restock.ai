@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { SupplierQuote, InventoryItem } from '../types';
-import { createPayPalOrder, capturePayPalOrder } from '../services/api';
-import { CheckCircle2, ShieldCheck, Loader2, DollarSign, X, ArrowRight, Download } from 'lucide-react';
+import { createPayPalOrder, capturePayPalOrder, downloadReceipt } from '../services/api';
+import { CheckCircle2, ShieldCheck, Loader2, X, ArrowRight, Download } from 'lucide-react';
 
 interface Props {
   item: InventoryItem;
@@ -9,6 +9,8 @@ interface Props {
   quote: SupplierQuote;
   onClose: () => void;
   onSuccess: (newStock: number, transactionId: string) => void;
+  initialStep?: 'REVIEW' | 'SUCCESS';
+  initialOrderData?: { orderId: string; txnId: string; newStock: number };
 }
 
 export const PayPalModal: React.FC<Props> = ({
@@ -17,12 +19,25 @@ export const PayPalModal: React.FC<Props> = ({
   quote,
   onClose,
   onSuccess,
+  initialStep = 'REVIEW',
+  initialOrderData,
 }) => {
-  const [step, setStep] = useState<'REVIEW' | 'CREATING' | 'READY' | 'CAPTURING' | 'SUCCESS'>('REVIEW');
-  const [orderId, setOrderId] = useState<string>('');
-  const [txnId, setTxnId] = useState<string>('');
+  const [step, setStep] = useState<'REVIEW' | 'CREATING' | 'READY' | 'CAPTURING' | 'SUCCESS'>(initialStep);
+  const [orderId, setOrderId] = useState<string>(initialOrderData?.orderId || '');
+  const [txnId, setTxnId] = useState<string>(initialOrderData?.txnId || '');
   const [isSimulated, setIsSimulated] = useState<boolean>(false);
-  const [capturedStock, setCapturedStock] = useState<number | null>(null);
+  const [capturedStock, setCapturedStock] = useState<number | null>(initialOrderData?.newStock ?? null);
+  const [isDownloading, setIsDownloading] = useState<boolean>(false);
+
+  // Auto-download official PDF receipt on successful settlement
+  useEffect(() => {
+    if (step === 'SUCCESS' && txnId) {
+      const timer = setTimeout(() => {
+        handleDownloadReceipt();
+      }, 700);
+      return () => clearTimeout(timer);
+    }
+  }, [step, txnId]);
 
   const handleCreateOrder = async () => {
     setStep('CREATING');
@@ -43,7 +58,6 @@ export const PayPalModal: React.FC<Props> = ({
     }
   };
 
-
   const handleCapture = async () => {
     setStep('CAPTURING');
     try {
@@ -54,7 +68,7 @@ export const PayPalModal: React.FC<Props> = ({
 
       setTxnId(res.data.transaction_id);
       setCapturedStock(res.data.new_stock);
-      setStep('SUCCESS'); // Keeps the modal on the success screen!
+      setStep('SUCCESS');
     } catch (err) {
       console.error('Failed to capture PayPal payment:', err);
       setStep('READY');
@@ -68,34 +82,24 @@ export const PayPalModal: React.FC<Props> = ({
     onClose();
   };
 
-    const handleDownloadReceipt = async () => {
+  const handleDownloadReceipt = async () => {
+    setIsDownloading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/receipt/download', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          supplier_name: quote.supplier_name,
-          item_name: item.name,
-          quantity: quantity,
-          unit: item.unit,
-          unit_price: quote.unit_price,
-          shipping_fee: quote.shipping_fee,
-          total_cost: quote.total_cost,
-          order_id: orderId,
-          transaction_id: txnId,
-        }),
+      await downloadReceipt({
+        supplier_name: quote.supplier_name,
+        item_name: item.name,
+        quantity: quantity,
+        unit: item.unit,
+        unit_price: quote.unit_price,
+        shipping_fee: quote.shipping_fee,
+        total_cost: quote.total_cost,
+        order_id: orderId,
+        transaction_id: txnId,
       });
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Restock_Receipt_${txnId.slice(0, 8)}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
     } catch (err) {
       console.error('Failed to download receipt:', err);
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -184,9 +188,16 @@ export const PayPalModal: React.FC<Props> = ({
 
               <button
                 onClick={handleCapture}
-                className="w-full py-3 bg-[#FFC439] hover:bg-[#F2BA36] text-slate-900 font-extrabold text-sm rounded-xl shadow-md transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-3.5 bg-[#FFC439] hover:bg-[#F2BA36] active:bg-[#E5B030] text-slate-900 font-black text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2.5 cursor-pointer border border-[#E0AC30]"
               >
-                <DollarSign className="w-4 h-4" /> Authorize & Capture ${quote.total_cost.toFixed(2)}
+                {/* Official PayPal Monogram & Wordmark Vector */}
+                <svg className="h-5 w-auto" viewBox="0 0 85 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M7.4 2.8H2.8C2.3 2.8 1.9 3.2 1.8 3.7L0 15.3C-0.1 15.6 0.2 16 0.6 16H3.2L4.2 9.5C4.3 9.1 4.7 8.7 5.1 8.7H7.3C10.4 8.7 12.4 7.2 12.8 4.3C13.2 2 11.4 2.8 7.4 2.8Z" fill="#003087"/>
+                  <path d="M10.8 7.2H8.6C8.2 7.2 7.8 7.6 7.7 8L6.4 16.3L5.9 19.3C5.8 19.6 6.1 20 6.5 20H9L9.9 14.3C10 13.9 10.4 13.5 10.8 13.5H12.4C15 13.5 16.7 12.2 17.1 9.7C17.5 7.8 16 7.2 10.8 7.2Z" fill="#0079C1"/>
+                  <text x="21" y="16.5" fontFamily="Arial, Helvetica, sans-serif" fontSize="14" fontWeight="900" fontStyle="italic" fill="#003087">Pay</text>
+                  <text x="49" y="16.5" fontFamily="Arial, Helvetica, sans-serif" fontSize="14" fontWeight="900" fontStyle="italic" fill="#0079C1">Pal</text>
+                </svg>
+                <span className="font-extrabold text-slate-900">• Authorize & Settle ${quote.total_cost.toFixed(2)}</span>
               </button>
             </div>
           )}
@@ -210,14 +221,19 @@ export const PayPalModal: React.FC<Props> = ({
                 <p className="text-xs text-emerald-700 font-semibold mt-2">
                   ✓ Inventory successfully replenished (+{quantity} {item.unit})!
                 </p>
+                <p className="text-[11px] text-blue-600 font-medium mt-1">
+                  📄 Official cryptographic PDF receipt generated
+                </p>
               </div>
 
               <div className="flex flex-col gap-2 pt-2">
-                                <button
+                <button
                   onClick={handleDownloadReceipt}
-                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  disabled={isDownloading}
+                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-blue-500/20"
                 >
-                  <Download className="w-4 h-4" /> Download PDF Receipt (ReportLab)
+                  <Download className={`w-4 h-4 ${isDownloading ? 'animate-bounce' : ''}`} />
+                  {isDownloading ? 'Downloading PDF Receipt...' : 'Download Official PDF Receipt (ReportLab)'}
                 </button>
 
                 <button
