@@ -19,6 +19,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+def health_check():
+    return {
+        "status": "online",
+        "service": "Restock.ai Autonomous Procurement API",
+        "docs": "/docs"
+    }
+
 # Multi-Tenant Business Profiles & Multi-Item Catalogs
 PROFILES = {
     "coffee": {
