@@ -53,11 +53,14 @@ export const downloadReceipt = async (data: {
   const response = await API.post('/receipt/download', data, { responseType: 'blob' });
   const blob = new Blob([response.data], { type: 'application/pdf' });
   const url = window.URL.createObjectURL(blob);
+
   const a = document.createElement('a');
   a.href = url;
   a.download = `Restock_Receipt_${data.transaction_id.slice(0, 8)}.pdf`;
   document.body.appendChild(a);
   a.click();
   a.remove();
-  window.URL.revokeObjectURL(url);
+
+  window.open(url, '_blank');
+  setTimeout(() => window.URL.revokeObjectURL(url), 10000);
 };

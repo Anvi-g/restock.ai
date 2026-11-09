@@ -17,7 +17,8 @@ import { ApprovalCard } from './components/ApprovalCard';
 import { AgentTerminal } from './components/AgentTerminal';
 import { PayPalModal } from './components/PayPalModal';
 import { AddItemModal } from './components/AddItemModal';
-import { Bot, RefreshCw, AlertTriangle, CheckCircle, PackageSearch, ChevronDown, Plus } from 'lucide-react';
+import { Bot, RefreshCw, AlertTriangle, CheckCircle, PackageSearch, ChevronDown, Plus, Zap, CheckCircle2, X } from 'lucide-react';
+import { downloadReceipt } from './services/api';
 
 const PROFILES = [
   { key: 'coffee', name: 'Bean & Brew Roastery', type: 'Specialty Coffee Shop', icon: '☕', email: 'buyer-sandbox@restock.ai' },
@@ -38,6 +39,11 @@ export default function App() {
   const [currentProfile, setCurrentProfile] = useState(PROFILES[0]);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [isBulkSelected, setIsBulkSelected] = useState(false);
+  const [toast, setToast] = useState<{
+    title: string;
+    message: string;
+    txnId: string;
+  } | null>(null);
 
   // Load inventory on mount
   useEffect(() => {
@@ -132,14 +138,31 @@ export default function App() {
         quantity: currentQty,
       });
 
-      // 3. Open official PayPal Modal directly in SUCCESS state (No alert() popup!)
-      setModalInitialStep('SUCCESS');
-      setModalOrderData({
-        orderId: orderRes.data.order_id,
+      // 3. Immediately update inventory state
+      setInventory((prev) => (prev ? { ...prev, current_stock: captureRes.data.new_stock } : prev));
+      setSourcing(null);
+      setSelectedQuote(null);
+      setIsBulkSelected(false);
+
+      // 4. Trigger sleek non-blocking Toast notification
+      setToast({
+        title: "Autonomous Settlement Complete",
+        message: `Order of ${currentQty} ${inventory.unit} captured via PayPal Orders API v2. Stock updated to ${captureRes.data.new_stock} ${inventory.unit}.`,
         txnId: captureRes.data.transaction_id,
-        newStock: captureRes.data.new_stock,
       });
-      setShowPayPalModal(true);
+
+      // 5. Auto-download and display the PDF receipt
+      downloadReceipt({
+        supplier_name: selectedQuote.supplier_name,
+        item_name: inventory.name,
+        quantity: currentQty,
+        unit: inventory.unit,
+        unit_price: selectedQuote.unit_price,
+        shipping_fee: selectedQuote.shipping_fee,
+        total_cost: currentCost,
+        order_id: orderRes.data.order_id,
+        transaction_id: captureRes.data.transaction_id,
+      });
     } catch (err) {
       console.error("Autonomous execution failed, falling back to manual modal:", err);
       setModalInitialStep('REVIEW');
@@ -420,6 +443,32 @@ export default function App() {
             setModalInitialStep('REVIEW');
           }}
         />
+      )}
+
+      {/* Sleek Floating Toast Notification */}
+      {toast && (
+        <div className="fixed top-5 right-5 z-50 max-w-md bg-slate-900 text-white p-4 rounded-2xl shadow-2xl border border-emerald-500/40 flex items-start gap-3.5 animate-in slide-in-from-top-4 duration-300">
+          <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
+            <CheckCircle2 className="w-5 h-5" />
+          </div>
+          <div className="flex-1 text-xs space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-sm text-slate-100 flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                {toast.title}
+              </span>
+              <button onClick={() => setToast(null)} className="text-slate-400 hover:text-white cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-slate-300">{toast.message}</p>
+            <div className="flex items-center gap-2 pt-1 font-mono text-[10px] text-emerald-400">
+              <span>TXN: {toast.txnId}</span>
+              <span>•</span>
+              <span className="text-slate-400 font-sans">PDF Receipt Opened</span>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

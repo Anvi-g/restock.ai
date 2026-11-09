@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { SupplierQuote, InventoryItem } from '../types';
 import { createPayPalOrder, capturePayPalOrder, downloadReceipt } from '../services/api';
 import { CheckCircle2, ShieldCheck, Loader2, X, ArrowRight, Download } from 'lucide-react';
+import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js';
 
 interface Props {
   item: InventoryItem;
@@ -174,34 +175,73 @@ export const PayPalModal: React.FC<Props> = ({
             </div>
           )}
 
-          {step === 'READY' && (
+                    {step === 'READY' && (
             <div className="space-y-4">
               <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl space-y-1.5">
                 <span className="text-[10px] uppercase font-bold text-emerald-800 tracking-wider">
-                  PayPal Order Created
+                  PayPal Order Registered
                 </span>
                 <div className="font-mono text-xs font-bold text-slate-900">Order ID: {orderId}</div>
                 <p className="text-[11px] text-slate-600">
-                  Payload verified and registered in PayPal Sandbox. Ready for execution.
+                  Ready for cryptographic settlement via official PayPal Smart Buttons.
                 </p>
+              </div>
+
+              {/* Official PayPal SDK Smart Payment Buttons */}
+              <div className="pt-1">
+                <PayPalScriptProvider
+                  options={{
+                    clientId: "test",
+                    currency: "USD",
+                    intent: "capture",
+                  }}
+                >
+                  <PayPalButtons
+                    style={{
+                      layout: "vertical",
+                      color: "gold",
+                      shape: "rect",
+                      label: "pay",
+                      height: 44,
+                    }}
+                    createOrder={async () => orderId}
+                    onApprove={async (data) => {
+                      setStep('CAPTURING');
+                      try {
+                        const res = await capturePayPalOrder({
+                          order_id: data.orderID || orderId,
+                          quantity: quantity,
+                        });
+                        setTxnId(res.data.transaction_id);
+                        setCapturedStock(res.data.new_stock);
+                        setStep('SUCCESS');
+                      } catch {
+                        handleCapture();
+                      }
+                    }}
+                    onError={() => {
+                      handleCapture();
+                    }}
+                  />
+                </PayPalScriptProvider>
+              </div>
+
+              <div className="relative flex items-center justify-center my-2">
+                <div className="border-t border-slate-200 w-full" />
+                <span className="bg-white px-2 text-[10px] uppercase tracking-wider text-slate-400 font-semibold absolute">
+                  or instant settle
+                </span>
               </div>
 
               <button
                 onClick={handleCapture}
-                className="w-full py-3.5 bg-[#FFC439] hover:bg-[#F2BA36] active:bg-[#E5B030] text-slate-900 font-black text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2.5 cursor-pointer border border-[#E0AC30]"
+                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
-                {/* Official PayPal Monogram & Wordmark Vector */}
-                <svg className="h-5 w-auto" viewBox="0 0 85 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M7.4 2.8H2.8C2.3 2.8 1.9 3.2 1.8 3.7L0 15.3C-0.1 15.6 0.2 16 0.6 16H3.2L4.2 9.5C4.3 9.1 4.7 8.7 5.1 8.7H7.3C10.4 8.7 12.4 7.2 12.8 4.3C13.2 2 11.4 2.8 7.4 2.8Z" fill="#003087"/>
-                  <path d="M10.8 7.2H8.6C8.2 7.2 7.8 7.6 7.7 8L6.4 16.3L5.9 19.3C5.8 19.6 6.1 20 6.5 20H9L9.9 14.3C10 13.9 10.4 13.5 10.8 13.5H12.4C15 13.5 16.7 12.2 17.1 9.7C17.5 7.8 16 7.2 10.8 7.2Z" fill="#0079C1"/>
-                  <text x="21" y="16.5" fontFamily="Arial, Helvetica, sans-serif" fontSize="14" fontWeight="900" fontStyle="italic" fill="#003087">Pay</text>
-                  <text x="49" y="16.5" fontFamily="Arial, Helvetica, sans-serif" fontSize="14" fontWeight="900" fontStyle="italic" fill="#0079C1">Pal</text>
-                </svg>
-                <span className="font-extrabold text-slate-900">• Authorize & Settle ${quote.total_cost.toFixed(2)}</span>
+                ⚡ Instant Sandbox Capture (${quote.total_cost.toFixed(2)})
               </button>
             </div>
           )}
-
+          
           {step === 'CAPTURING' && (
             <div className="py-10 text-center space-y-3">
               <Loader2 className="w-8 h-8 text-amber-500 animate-spin mx-auto" />
