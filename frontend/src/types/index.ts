@@ -21,11 +21,6 @@ export interface SupplierQuote {
   is_recommended: boolean;
   ai_rationale?: string;
   savings_vs_avg?: number;
-  bulk_threshold_qty?: number;
-  bulk_discount_rate?: number;
-  bulk_unit_price?: number;
-  bulk_total_cost?: number;
-  bulk_savings?: number;
 }
 
 export interface SourcingResult {
@@ -43,12 +38,9 @@ export interface SourcingResult {
 
 export interface BulkOpportunity {
   is_available: boolean;
-  supplier_id?: string;
-  supplier_name?: string;
   recommended_qty: number;
   unit_price: number;
   total_cost: number;
   estimated_savings: number;
-  discount_rate?: number;
   pitch?: string;
 }

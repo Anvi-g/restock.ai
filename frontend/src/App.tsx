@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import type { InventoryItem, SupplierQuote, SourcingResult, BulkOpportunity } from './types';
+import { useState, useEffect } from 'react';
+import type { InventoryItem, SupplierQuote, SourcingResult } from './types';
 import { 
   getInventory, 
   simulateLowInventory, 
@@ -107,29 +107,9 @@ export default function App() {
 
   const [isAutoExecuting, setIsAutoExecuting] = useState(false);
 
-  // Dynamic supplier-specific bulk discount calculation based on selected quote
-  const activeBulkOpportunity = useMemo<BulkOpportunity | null>(() => {
-    if (!selectedQuote) return sourcing?.bulk_opportunity || null;
-    if (selectedQuote.bulk_threshold_qty && selectedQuote.bulk_discount_rate && selectedQuote.bulk_unit_price) {
-      const discountPct = Math.round(selectedQuote.bulk_discount_rate * 100);
-      return {
-        is_available: true,
-        supplier_id: selectedQuote.supplier_id,
-        supplier_name: selectedQuote.supplier_name,
-        recommended_qty: selectedQuote.bulk_threshold_qty,
-        unit_price: selectedQuote.bulk_unit_price,
-        total_cost: selectedQuote.bulk_total_cost || Math.round((selectedQuote.bulk_unit_price * selectedQuote.bulk_threshold_qty + selectedQuote.shipping_fee) * 100) / 100,
-        estimated_savings: selectedQuote.bulk_savings || Math.round(((selectedQuote.unit_price * selectedQuote.bulk_threshold_qty + selectedQuote.shipping_fee) - (selectedQuote.bulk_unit_price * selectedQuote.bulk_threshold_qty + selectedQuote.shipping_fee)) * 100) / 100,
-        discount_rate: selectedQuote.bulk_discount_rate,
-        pitch: `${selectedQuote.supplier_name} Wholesale Tier: Order ${selectedQuote.bulk_threshold_qty} ${inventory?.unit || 'units'} to unlock ${discountPct}% volume discount ($${selectedQuote.bulk_unit_price.toFixed(2)}/${inventory?.unit || 'unit'}), saving $${(selectedQuote.bulk_savings || 0).toFixed(2)} compared to regular orders.`
-      };
-    }
-    return sourcing?.bulk_opportunity || null;
-  }, [selectedQuote, sourcing, inventory]);
-
   const handleApproveAndPay = async () => {
-    const currentQty = isBulkSelected && activeBulkOpportunity ? activeBulkOpportunity.recommended_qty : sourcing?.quantity_needed || 0;
-    const currentCost = isBulkSelected && activeBulkOpportunity ? activeBulkOpportunity.total_cost : selectedQuote?.total_cost || 0;
+    const currentQty = isBulkSelected && sourcing?.bulk_opportunity ? sourcing.bulk_opportunity.recommended_qty : sourcing?.quantity_needed || 0;
+    const currentCost = isBulkSelected && sourcing?.bulk_opportunity ? sourcing.bulk_opportunity.total_cost : selectedQuote?.total_cost || 0;
     const exceedsCap = currentCost > budgetCap;
 
     // If over budget cap: Open review modal for human verification
@@ -361,8 +341,8 @@ export default function App() {
                 </div>
               )}
             </div>
-            {/* Dynamic Supplier-Specific Bulk Tier Discount Opportunity Banner */}
-            {activeBulkOpportunity?.is_available && (
+                        {/* Bulk Tier Discount Opportunity Banner */}
+            {sourcing.bulk_opportunity?.is_available && (
               <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 p-4 rounded-2xl flex items-center justify-between shadow-xs">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold text-lg shadow-xs">
@@ -371,14 +351,14 @@ export default function App() {
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-purple-900 uppercase tracking-wider">
-                        {activeBulkOpportunity.supplier_name ? `${activeBulkOpportunity.supplier_name} Wholesale Tier` : 'Wholesale Bulk Tier Detected'}
+                        Wholesale Bulk Tier Detected
                       </span>
                       <span className="text-[11px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-300">
-                        Save ${activeBulkOpportunity.estimated_savings.toFixed(2)}
+                        Save ${sourcing.bulk_opportunity.estimated_savings.toFixed(2)}
                       </span>
                     </div>
                     <p className="text-xs text-slate-600 mt-0.5">
-                      {activeBulkOpportunity.pitch}
+                      {sourcing.bulk_opportunity.pitch}
                     </p>
                   </div>
                 </div>
@@ -391,9 +371,7 @@ export default function App() {
                       : 'bg-white hover:bg-purple-50 text-purple-700 border border-purple-300'
                   }`}
                 >
-                  {isBulkSelected
-                    ? `✓ Bulk Tier Applied (${activeBulkOpportunity.recommended_qty} ${inventory?.unit || 'units'})`
-                    : `Upgrade to Bulk Tier (${activeBulkOpportunity.recommended_qty} ${inventory?.unit || 'units'})`}
+                  {isBulkSelected ? '✓ Bulk Tier Applied (40 units)' : 'Upgrade to Bulk Tier'}
                 </button>
               </div>
             )}
@@ -411,10 +389,10 @@ export default function App() {
             {inventory && selectedQuote && (
               <ApprovalCard
                 item={inventory}
-                quantityNeeded={isBulkSelected && activeBulkOpportunity ? activeBulkOpportunity.recommended_qty : sourcing.quantity_needed}
+                quantityNeeded={isBulkSelected && sourcing.bulk_opportunity ? sourcing.bulk_opportunity.recommended_qty : sourcing.quantity_needed}
                 selectedQuote={
-                  isBulkSelected && activeBulkOpportunity
-                    ? { ...selectedQuote, total_cost: activeBulkOpportunity.total_cost, unit_price: activeBulkOpportunity.unit_price }
+                  isBulkSelected && sourcing.bulk_opportunity
+                    ? { ...selectedQuote, total_cost: sourcing.bulk_opportunity.total_cost, unit_price: sourcing.bulk_opportunity.unit_price }
                     : selectedQuote
                 }
                 budgetCap={budgetCap}
@@ -442,10 +420,10 @@ export default function App() {
       {showPayPalModal && inventory && selectedQuote && sourcing && (
         <PayPalModal
           item={inventory}
-          quantity={isBulkSelected && activeBulkOpportunity ? activeBulkOpportunity.recommended_qty : sourcing.quantity_needed}
+          quantity={isBulkSelected && sourcing.bulk_opportunity ? sourcing.bulk_opportunity.recommended_qty : sourcing.quantity_needed}
           quote={
-            isBulkSelected && activeBulkOpportunity
-              ? { ...selectedQuote, total_cost: activeBulkOpportunity.total_cost, unit_price: activeBulkOpportunity.unit_price }
+            isBulkSelected && sourcing.bulk_opportunity
+              ? { ...selectedQuote, total_cost: sourcing.bulk_opportunity.total_cost, unit_price: sourcing.bulk_opportunity.unit_price }
               : selectedQuote
           }
           initialStep={modalInitialStep}

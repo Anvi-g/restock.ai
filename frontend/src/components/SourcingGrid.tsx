@@ -97,21 +97,6 @@ export const SourcingGrid: React.FC<Props> = ({ quotes, selectedSupplierId, onSe
       },
     },
     {
-      headerName: 'Wholesale Tier',
-      field: 'bulk_discount_rate',
-      width: 160,
-      cellRenderer: (params: ICellRendererParams<SupplierQuote>) => {
-        const data = params.data;
-        if (!data || !data.bulk_threshold_qty || !data.bulk_discount_rate) return null;
-        const pct = Math.round(data.bulk_discount_rate * 100);
-        return (
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-800 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200 shadow-2xs">
-            {pct}% OFF @ {data.bulk_threshold_qty} units
-          </span>
-        );
-      },
-    },
-    {
       headerName: 'Reliability',
       field: 'rating',
       width: 130,
