@@ -4,6 +4,8 @@
 
 Built for the **PayPal AI Hackathon 2026** on Devpost.
 
+![Restock.ai Platform Dashboard](docs/images/one.png)
+
 ---
 
 ## 🌟 Overview
