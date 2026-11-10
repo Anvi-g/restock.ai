@@ -23,13 +23,21 @@ class SupplierQuote(BaseModel):
     is_recommended: bool = False
     ai_rationale: Optional[str] = None
     savings_vs_avg: Optional[float] = None 
+    bulk_threshold_qty: Optional[int] = 35
+    bulk_discount_rate: Optional[float] = 0.20
+    bulk_unit_price: Optional[float] = None
+    bulk_total_cost: Optional[float] = None
+    bulk_savings: Optional[float] = None
 
 class BulkOpportunity(BaseModel):
     is_available: bool = False
-    recommended_qty: int = 40
-    unit_price: float = 10.80
-    total_cost: float = 447.00
-    estimated_savings: float = 148.00
+    supplier_id: Optional[str] = None
+    supplier_name: Optional[str] = None
+    recommended_qty: int = 35
+    unit_price: float = 11.60
+    total_cost: float = 421.00
+    estimated_savings: float = 101.50
+    discount_rate: float = 0.20
     pitch: Optional[str] = None
 
 class SourcingResult(BaseModel):

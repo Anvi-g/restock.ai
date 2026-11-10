@@ -120,25 +120,30 @@ async def run_researcher_agent(
 
     # 5. Economic Order Quantity (EOQ) / Bulk Tier Opportunity
     bulk_opp = None
-    if quantity_needed >= 15 and best_quote:
-        bulk_qty = max(40, quantity_needed + 14)
-        bulk_unit_price = round(best_quote.unit_price * 0.75, 2)  # 25% discount tier
-        bulk_total = round((bulk_unit_price * bulk_qty) + best_quote.shipping_fee, 2)
-        regular_equiv_cost = round((best_quote.unit_price * bulk_qty) + best_quote.shipping_fee, 2)
-        savings = round(regular_equiv_cost - bulk_total, 2)
+    if quantity_needed >= 10 and best_quote:
+        bulk_qty = max(best_quote.bulk_threshold_qty or 35, quantity_needed)
+        discount_rate = best_quote.bulk_discount_rate or 0.20
+        bulk_unit_price = best_quote.bulk_unit_price or round(best_quote.unit_price * (1 - discount_rate), 2)
+        bulk_total = best_quote.bulk_total_cost or round((bulk_unit_price * bulk_qty) + best_quote.shipping_fee, 2)
+        savings = best_quote.bulk_savings or round(((best_quote.unit_price * bulk_qty) + best_quote.shipping_fee) - bulk_total, 2)
+        discount_pct = int(round(discount_rate * 100))
 
         bulk_opp = BulkOpportunity(
             is_available=True,
+            supplier_id=best_quote.supplier_id,
+            supplier_name=best_quote.supplier_name,
             recommended_qty=bulk_qty,
             unit_price=bulk_unit_price,
             total_cost=bulk_total,
             estimated_savings=savings,
+            discount_rate=discount_rate,
             pitch=(
-                f"Wholesale Tier Opportunity: Upgrading to {bulk_qty} {item.unit} "
-                f"drops unit price to ${bulk_unit_price:.2f} (saves ${savings:.2f} over regular re-orders)."
+                f"{best_quote.supplier_name} Wholesale Tier: Order {bulk_qty} {item.unit} "
+                f"to unlock {discount_pct}% volume discount (${bulk_unit_price:.2f}/{item.unit}), "
+                f"saving ${savings:.2f} compared to regular orders."
             )
         )
-        logs.append(f"[AGENT] 💡 EOQ Insight: Bulk tier discount identified at {bulk_qty} units (saves ${savings:.2f}).")
+        logs.append(f"[AGENT] 💡 EOQ Insight: {best_quote.supplier_name} wholesale tier identified at {bulk_qty} units ({discount_pct}% OFF, saves ${savings:.2f}).")
 
     return SourcingResult(
         item=item,
