@@ -21,6 +21,10 @@ export interface SupplierQuote {
   is_recommended: boolean;
   ai_rationale?: string;
   savings_vs_avg?: number;
+  bulk_unit_price?: number;
+  bulk_total_cost?: number;
+  bulk_savings?: number;
+  bulk_discount_rate?: number;
 }
 
 export interface SourcingResult {

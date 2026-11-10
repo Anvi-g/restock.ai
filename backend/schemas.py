@@ -23,6 +23,10 @@ class SupplierQuote(BaseModel):
     is_recommended: bool = False
     ai_rationale: Optional[str] = None
     savings_vs_avg: Optional[float] = None 
+    bulk_unit_price: Optional[float] = None
+    bulk_total_cost: Optional[float] = None
+    bulk_savings: Optional[float] = None
+    bulk_discount_rate: Optional[float] = None 
 
 class BulkOpportunity(BaseModel):
     is_available: bool = False

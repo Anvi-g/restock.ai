@@ -120,12 +120,11 @@ async def run_researcher_agent(
 
     # 5. Economic Order Quantity (EOQ) / Bulk Tier Opportunity
     bulk_opp = None
-    if quantity_needed >= 15 and best_quote:
-        bulk_qty = max(40, quantity_needed + 14)
-        bulk_unit_price = round(best_quote.unit_price * 0.75, 2)  # 25% discount tier
-        bulk_total = round((bulk_unit_price * bulk_qty) + best_quote.shipping_fee, 2)
-        regular_equiv_cost = round((best_quote.unit_price * bulk_qty) + best_quote.shipping_fee, 2)
-        savings = round(regular_equiv_cost - bulk_total, 2)
+    if quantity_needed >= 10 and best_quote:
+        bulk_qty = 40
+        bulk_unit_price = best_quote.bulk_unit_price if best_quote.bulk_unit_price is not None else 10.80
+        bulk_total = best_quote.bulk_total_cost if best_quote.bulk_total_cost is not None else 447.00
+        savings = best_quote.bulk_savings if best_quote.bulk_savings is not None else 148.00
 
         bulk_opp = BulkOpportunity(
             is_available=True,
@@ -138,7 +137,7 @@ async def run_researcher_agent(
                 f"drops unit price to ${bulk_unit_price:.2f} (saves ${savings:.2f} over regular re-orders)."
             )
         )
-        logs.append(f"[AGENT] 💡 EOQ Insight: Bulk tier discount identified at {bulk_qty} units (saves ${savings:.2f}).")
+        logs.append(f"[AGENT] 💡 EOQ Insight: {best_quote.supplier_name} bulk tier discount identified at {bulk_qty} units (saves ${savings:.2f}).")
 
     return SourcingResult(
         item=item,

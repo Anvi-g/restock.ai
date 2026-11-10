@@ -109,7 +109,9 @@ export default function App() {
 
   const handleApproveAndPay = async () => {
     const currentQty = isBulkSelected && sourcing?.bulk_opportunity ? sourcing.bulk_opportunity.recommended_qty : sourcing?.quantity_needed || 0;
-    const currentCost = isBulkSelected && sourcing?.bulk_opportunity ? sourcing.bulk_opportunity.total_cost : selectedQuote?.total_cost || 0;
+    const currentCost = isBulkSelected && selectedQuote?.bulk_total_cost
+      ? selectedQuote.bulk_total_cost
+      : (isBulkSelected && sourcing?.bulk_opportunity ? sourcing.bulk_opportunity.total_cost : selectedQuote?.total_cost || 0);
     const exceedsCap = currentCost > budgetCap;
 
     // If over budget cap: Open review modal for human verification
@@ -354,11 +356,13 @@ export default function App() {
                         Wholesale Bulk Tier Detected
                       </span>
                       <span className="text-[11px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-300">
-                        Save ${sourcing.bulk_opportunity.estimated_savings.toFixed(2)}
+                        Save ${(selectedQuote?.bulk_savings ?? sourcing.bulk_opportunity.estimated_savings).toFixed(2)}
                       </span>
                     </div>
                     <p className="text-xs text-slate-600 mt-0.5">
-                      {sourcing.bulk_opportunity.pitch}
+                      {selectedQuote?.bulk_unit_price
+                        ? `Wholesale Tier Opportunity: Upgrading to 40 ${inventory?.unit || 'units'} drops unit price to $${selectedQuote.bulk_unit_price.toFixed(2)} (saves $${selectedQuote.bulk_savings?.toFixed(2)} over regular orders).`
+                        : sourcing.bulk_opportunity.pitch}
                     </p>
                   </div>
                 </div>
@@ -391,9 +395,11 @@ export default function App() {
                 item={inventory}
                 quantityNeeded={isBulkSelected && sourcing.bulk_opportunity ? sourcing.bulk_opportunity.recommended_qty : sourcing.quantity_needed}
                 selectedQuote={
-                  isBulkSelected && sourcing.bulk_opportunity
-                    ? { ...selectedQuote, total_cost: sourcing.bulk_opportunity.total_cost, unit_price: sourcing.bulk_opportunity.unit_price }
-                    : selectedQuote
+                  isBulkSelected && selectedQuote.bulk_total_cost
+                    ? { ...selectedQuote, total_cost: selectedQuote.bulk_total_cost, unit_price: selectedQuote.bulk_unit_price ?? selectedQuote.unit_price }
+                    : (isBulkSelected && sourcing.bulk_opportunity
+                      ? { ...selectedQuote, total_cost: sourcing.bulk_opportunity.total_cost, unit_price: sourcing.bulk_opportunity.unit_price }
+                      : selectedQuote)
                 }
                 budgetCap={budgetCap}
                 onApproveAndPay={handleApproveAndPay}
@@ -422,9 +428,11 @@ export default function App() {
           item={inventory}
           quantity={isBulkSelected && sourcing.bulk_opportunity ? sourcing.bulk_opportunity.recommended_qty : sourcing.quantity_needed}
           quote={
-            isBulkSelected && sourcing.bulk_opportunity
-              ? { ...selectedQuote, total_cost: sourcing.bulk_opportunity.total_cost, unit_price: sourcing.bulk_opportunity.unit_price }
-              : selectedQuote
+            isBulkSelected && selectedQuote.bulk_total_cost
+              ? { ...selectedQuote, total_cost: selectedQuote.bulk_total_cost, unit_price: selectedQuote.bulk_unit_price ?? selectedQuote.unit_price }
+              : (isBulkSelected && sourcing.bulk_opportunity
+                ? { ...selectedQuote, total_cost: sourcing.bulk_opportunity.total_cost, unit_price: sourcing.bulk_opportunity.unit_price }
+                : selectedQuote)
           }
           initialStep={modalInitialStep}
           initialOrderData={modalOrderData || undefined}
