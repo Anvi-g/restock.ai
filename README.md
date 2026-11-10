@@ -4,7 +4,7 @@
 
 Built for the **PayPal AI Hackathon 2026** on Devpost.
 
-![Restock.ai Platform Dashboard](docs/images/one.png)
+![Restock.ai Full Autonomous Procurement Demo](docs/images/demo.gif)
 
 ---
 
@@ -18,12 +18,6 @@ Crucially, the agent operates under strict **Smart Budget Caps**:
 * **Under Cap (Autonomous Mode)**: Pre-authorized purchases are automatically executed and captured via the **PayPal Orders API v2** with zero manual friction, verified by an instant non-blocking floating Toast notification.
 * **Over Cap / Zero-Trust Mode**: The agent halts spending and prompts the business owner for **human-in-the-loop sign-off** using the official **PayPal Smart Payment Buttons** (`@paypal/react-paypal-js`).
 * **Post-Payment Reconciliation**: Upon PayPal settlement confirmation, inventory auto-replenishes and an official audit-ready PDF tax invoice is compiled via **ReportLab** and popped open on screen with authentic capture IDs.
-
----
-
-## 🎥 Live Agent Walkthrough
-
-![Restock.ai Live Agent Sourcing & PayPal Execution Demo](docs/images/two.GIF)
 
 ---
 
